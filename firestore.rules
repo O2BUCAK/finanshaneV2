@@ -1,220 +1,169 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (Firebase Auth UID)
+    // Fields:
+    //   - fullName: string (required)
+    //   - email: string (required, format: email)
+    //   - avatarUrl: string (optional)
+    //   - activeHouseholdId: string (optional)
+    //   - joinedBudgetIds: list (optional, strings)
+    //   - role: string (optional, enum: ['adult', 'child', 'elderly', 'other'])
+    //   - isAdmin: bool (optional)
+    //   - kvkkAccepted: bool (optional)
+    //   - kvkkAcceptedAt: timestamp (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: households
+    // Document ID: {householdId}
+    // Fields:
+    //   - name: string (required)
+    //   - ownerId: string (required, UID)
+    //   - currency: string (required)
+    //   - joinCode: string (required)
+    //   - members: map (required, userId -> {role, type, salaryVisible, displayName, email})
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
     // ===============================================================
     // Helper Functions
     // ===============================================================
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
     function isAdmin() {
       return isAuthenticated() &&
-        (
-          ('email' in request.auth.token && request.auth.token.email.lower() == "ersinozbucak@gmail.com") ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true)
-        );
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "ersinozbucak@gmail.com" && request.auth.token.email_verified == true));
     }
 
-    function isValidString(val, min, max) {
-      return val is string && val.size() >= min && val.size() <= max;
+    function isMemberOfHousehold(householdId) {
+      return isAuthenticated() && 
+             request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members.keys();
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
     }
 
     function isValidEmail(email) {
-      return email is string && (email == '' || email.matches('^[^@]+@[^@]+\\.[^@]+$'));
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
 
-    function hasOnlyAllowedFields(allowedFields) {
-      return request.resource.data.keys().hasOnly(allowedFields);
+    function validString(field, min, max) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= min && 
+             request.resource.data[field].size() <= max;
     }
 
-    function hasRequiredFields(requiredFields) {
-      return request.resource.data.keys().hasAll(requiredFields);
-    }
-
-    function getHousehold(householdId) {
-      return get(/databases/$(database)/documents/households/$(householdId)).data;
-    }
-    
-    function isHouseholdMember(householdId) {
-      return isAuthenticated() && (
-        isAdmin() ||
-        (exists(/databases/$(database)/documents/households/$(householdId)) && 
-         getHousehold(householdId).members[request.auth.uid] != null)
-      );
-    }
-    
-    function isHouseholdOwner(householdId) {
-      return isAuthenticated() && (
-        isAdmin() ||
-        (exists(/databases/$(database)/documents/households/$(householdId)) && 
-         getHousehold(householdId).ownerId == request.auth.uid)
-      );
+    function isRecent(field) {
+      return request.resource.data[field] is timestamp && 
+             request.resource.data[field] > request.time - duration.value(5, 'm') &&
+             request.resource.data[field] <= request.time;
     }
 
     // ===============================================================
     // Domain Validators
     // ===============================================================
-    
-    function isValidUser(data) {
-      return hasOnlyAllowedFields(['fullName', 'email', 'avatarUrl', 'activeHouseholdId', 'isAdmin', 'kvkkAccepted', 'kvkkAcceptedAt', 'createdAt', 'updatedAt', 'role']) &&
-             isValidString(data.fullName, 1, 100) &&
+
+    function isValidUserProfile(data) {
+      return hasRequiredFields(['fullName', 'email', 'createdAt']) &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
              isValidEmail(data.email) &&
-             (data.avatarUrl == null || isValidString(data.avatarUrl, 1, 500)) &&
-             (data.activeHouseholdId == null || isValidString(data.activeHouseholdId, 1, 100)) &&
-             (!('isAdmin' in data) || data.isAdmin is bool) &&
-             (!('kvkkAccepted' in data) || data.kvkkAccepted is bool) &&
-             (!('role' in data) || data.role is string) &&
-             (!('kvkkAcceptedAt' in data) || data.kvkkAcceptedAt is timestamp) &&
-             (!('createdAt' in data) || data.createdAt is timestamp) &&
-             (!('updatedAt' in data) || data.updatedAt is timestamp);
+             (data.isAdmin == false || isAdmin());
     }
 
     function isValidHousehold(data) {
-      return hasOnlyAllowedFields(['name', 'ownerId', 'members', 'joinCode', 'currency', 'createdAt', 'updatedAt']) &&
-             isValidString(data.name, 1, 100) &&
-             isValidString(data.ownerId, 1, 100) &&
+      return hasRequiredFields(['name', 'ownerId', 'currency', 'members', 'joinCode', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.ownerId is string &&
              data.members is map &&
-             isValidString(data.joinCode, 1, 20) &&
-             isValidString(data.currency, 3, 3);
-    }
-
-    function isValidAccount(data) {
-      return hasOnlyAllowedFields(['name', 'type', 'subType', 'branch', 'balance', 'currency', 'ownerId', 'createdAt', 'updatedAt', 'assetDetails', 'depositDetails', 'points', 'icon', 'color', 'isCreditCard', 'creditLimit', 'isArchived', 'statementDay']) &&
-             isValidString(data.name, 1, 100) &&
-             data.type in ['asset', 'liability', 'income', 'expense'] &&
-             data.balance is number &&
-             isValidString(data.currency, 3, 3);
-    }
-
-    function isValidTransaction(data) {
-      return hasOnlyAllowedFields(['description', 'amount', 'currency', 'date', 'debitAccountId', 'creditAccountId', 'categoryId', 'userId', 'createdAt', 'updatedAt', 'isInstallment', 'installmentNumber', 'installmentCount', 'parentTransactionId', 'notes', 'receiptUrl']) &&
-             isValidString(data.description, 1, 200) &&
-             data.amount is number &&
-             isValidString(data.currency, 3, 3) &&
-             data.date is timestamp &&
-             isValidString(data.userId, 1, 100);
-    }
-
-    function isUnchanged(field) {
-      return ! (field in request.resource.data) || request.resource.data[field] == resource.data[field];
+             data.joinCode is string && data.joinCode.size() == 6;
     }
 
     // ===============================================================
-    // Global Admin Access
+    // Rules
     // ===============================================================
-    match /{path=**} {
-      allow read, write: if isAdmin();
-    }
 
-    // ===============================================================
-    // Users
-    // ===============================================================
+    // User Profiles - Strictly Owner Only for PII protection
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && 
-                      isValidUser(request.resource.data) && 
-                      request.resource.data.isAdmin == false;
-      allow update: if (isOwner(userId) && 
-                       isValidUser(request.resource.data) && 
-                       request.resource.data.isAdmin == resource.data.isAdmin &&
-                       isUnchanged('createdAt')) ||
-                      isAdmin();
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && isRecent('createdAt');
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && 
+                      (request.resource.data.isAdmin == resource.data.isAdmin || isAdmin()) &&
+                      request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin();
     }
-    
-    // ===============================================================
+
     // Households
-    // ===============================================================
     match /households/{householdId} {
-      allow get: if isAuthenticated();
-      allow list: if isAuthenticated();
+      // Allow read if member OR if querying by joinCode (for joining)
+      allow read: if isAuthenticated() && 
+                    (request.auth.uid in resource.data.members.keys() || 
+                     (request.query.limit <= 1 && request.query.filters.joinCode == resource.data.joinCode));
       
-      allow create: if isAuthenticated() && 
-                       isValidHousehold(request.resource.data) &&
-                       request.resource.data.ownerId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidHousehold(request.resource.data) && 
+                      request.resource.data.ownerId == request.auth.uid &&
+                      isRecent('createdAt');
       
-      allow update: if (isHouseholdMember(householdId) || 
-                       (isAuthenticated() && request.resource.data.members[request.auth.uid] != null && request.resource.data.joinCode == resource.data.joinCode)) && 
+      allow update: if isAuthenticated() && 
+                      (request.auth.uid in resource.data.members.keys()) && 
                       isValidHousehold(request.resource.data) &&
-                      isUnchanged('ownerId') &&
-                      isUnchanged('createdAt');
+                      request.resource.data.ownerId == resource.data.ownerId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
       
-      allow delete: if isHouseholdOwner(householdId) || isAdmin();
-      
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+
       // Subcollections
+      match /{allSubcollections=**} {
+        allow read, write: if isMemberOfHousehold(householdId);
+      }
+      
+      // Specific validation for subcollections
       match /accounts/{accountId} {
-        allow read: if isHouseholdMember(householdId);
-        allow create: if isHouseholdMember(householdId) && isValidAccount(request.resource.data);
-        allow update: if isHouseholdMember(householdId) && 
-                        isValidAccount(request.resource.data) &&
-                        isUnchanged('ownerId') &&
-                        isUnchanged('createdAt');
-        allow delete: if isHouseholdOwner(householdId) || isAdmin();
+        allow create, update: if isMemberOfHousehold(householdId) && 
+                                hasRequiredFields(['name', 'ownerId', 'type', 'branch', 'balance', 'currency', 'createdAt']) &&
+                                validString('name', 1, 100);
       }
-      
+
       match /transactions/{transactionId} {
-        allow read: if isHouseholdMember(householdId);
-        allow create: if isHouseholdMember(householdId) && isValidTransaction(request.resource.data);
-        allow update: if isHouseholdMember(householdId) && 
-                        isValidTransaction(request.resource.data) &&
-                        isUnchanged('userId') &&
-                        isUnchanged('createdAt');
-        allow delete: if isHouseholdOwner(householdId) || isAdmin();
-      }
-      
-      match /categories/{categoryId} {
-        allow read: if isHouseholdMember(householdId);
-        allow write: if isHouseholdMember(householdId);
-      }
-      
-      match /budgets/{budgetId} {
-        allow read: if isHouseholdMember(householdId);
-        allow write: if isHouseholdMember(householdId);
-      }
-      
-      match /sharedBudgets/{budgetId} {
-        allow read: if isAuthenticated() && (
-          isHouseholdMember(householdId) || 
-          (resource != null && resource.data.participants.hasAny([request.auth.uid]))
-        );
-        allow write: if isAuthenticated() && (
-          isHouseholdMember(householdId) || 
-          (resource != null && resource.data.participants.hasAny([request.auth.uid]))
-        );
-      }
-      
-      match /groups/{groupId} {
-        allow read: if isHouseholdMember(householdId);
-        allow write: if isHouseholdMember(householdId);
-      }
-
-      match /incomeSources/{sourceId} {
-        allow read: if isHouseholdMember(householdId);
-        allow write: if isHouseholdMember(householdId);
-      }
-
-      match /expectedIncomes/{incomeId} {
-        allow read: if isHouseholdMember(householdId);
-        allow write: if isHouseholdMember(householdId);
-      }
-
-      match /plannedExpenses/{expenseId} {
-        allow read: if isHouseholdMember(householdId);
-        allow write: if isHouseholdMember(householdId);
+        allow create, update: if isMemberOfHousehold(householdId) && 
+                                hasRequiredFields(['description', 'amount', 'currency', 'date', 'debitAccountId', 'creditAccountId', 'categoryId', 'userId', 'createdAt', 'updatedAt']) &&
+                                validString('description', 1, 200);
       }
     }
 
-    // Collection Group for Shared Budgets (to allow joining via code)
+    // Collection Group Rules for Shared Budgets
     match /{path=**}/sharedBudgets/{budgetId} {
+      // Allow read if member of household OR if participant OR querying by joinCode
+      allow read: if isAuthenticated() && 
+                    (isMemberOfHousehold(path.split('/')[1]) || 
+                     resource.data.joinCode == request.query.filters.joinCode ||
+                     (request.query.limit <= 1 && request.query.filters.joinCode == resource.data.joinCode));
+      
+      allow list: if isAuthenticated(); 
+    }
+
+    // Global Categories
+    match /categories/{categoryId} {
       allow read: if isAuthenticated();
-      allow list: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

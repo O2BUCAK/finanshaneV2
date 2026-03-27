@@ -19,6 +19,7 @@ import {
   X,
   Menu,
   AlertCircle,
+  Bot,
   Calendar,
   FileText,
   Tag,
@@ -67,6 +68,7 @@ import { SharedBudgets } from './components/SharedBudgets';
 import { HouseholdMembers } from './components/HouseholdMembers';
 import { PlannedExpenses } from './components/PlannedExpenses';
 import { AdminPanel } from './components/AdminPanel';
+import { AiAdvisor } from './components/AiAdvisor';
 
 // --- Constants ---
 
@@ -1821,6 +1823,7 @@ const Dashboard = () => {
   const [txToDelete, setTxToDelete] = useState<string | null>(null);
   const [isKVKKModalOpen, setIsKVKKModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isAiOpen, setIsAiOpen] = useState(false);
 
   useEffect(() => {
     if (profile && !profile.kvkkAccepted) {

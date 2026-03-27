@@ -1,7 +1,7 @@
 {
   "entities": {
-    "User": {
-      "title": "User",
+    "UserProfile": {
+      "title": "User Profile",
       "description": "App user profile information.",
       "type": "object",
       "properties": {
@@ -9,14 +9,14 @@
         "email": { "type": "string", "format": "email", "description": "User's email address." },
         "avatarUrl": { "type": "string", "description": "URL to user's profile picture." },
         "activeHouseholdId": { "type": "string", "description": "Current household ID." },
+        "joinedBudgetIds": { "type": "array", "items": { "type": "string" }, "description": "List of shared budget IDs the user is part of." },
+        "role": { "type": "string", "enum": ["adult", "child", "elderly", "other"], "description": "User's role in the household." },
         "isAdmin": { "type": "boolean", "description": "Whether the user is an admin." },
         "kvkkAccepted": { "type": "boolean", "description": "Whether KVKK terms are accepted." },
         "kvkkAcceptedAt": { "type": "string", "format": "date-time" },
-        "role": { "type": "string", "description": "User's role (adult/child)." },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["fullName", "email"]
+      "required": ["fullName", "email", "createdAt"]
     },
     "Household": {
       "title": "Household",
@@ -26,12 +26,11 @@
         "name": { "type": "string", "description": "Name of the household." },
         "ownerId": { "type": "string", "description": "UID of the household creator." },
         "currency": { "type": "string", "description": "Default currency (e.g., TRY)." },
-        "members": { "type": "object", "description": "Map of userIds to roles/metadata." },
         "joinCode": { "type": "string", "description": "Code to join the household." },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "members": { "type": "object", "description": "Map of userIds to roles/metadata." },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "ownerId", "members", "joinCode"]
+      "required": ["name", "ownerId", "members", "joinCode", "createdAt"]
     },
     "Account": {
       "title": "Account",
@@ -39,18 +38,25 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "ownerId": { "type": "string", "description": "UID of the account owner." },
+        "institution": { "type": "string" },
         "type": { "type": "string", "enum": ["asset", "liability", "income", "expense"] },
+        "branch": { "type": "string", "enum": ["banking", "crypto", "social_gift"] },
+        "subType": { "type": "string" },
         "balance": { "type": "number" },
         "currency": { "type": "string" },
+        "assetDetails": { "type": "object" },
         "icon": { "type": "string" },
         "color": { "type": "string" },
         "isCreditCard": { "type": "boolean" },
         "creditLimit": { "type": "number" },
         "statementDay": { "type": "number" },
         "isArchived": { "type": "boolean" },
+        "depositDetails": { "type": "object" },
+        "points": { "type": "array", "items": { "type": "object" } },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "type", "balance"]
+      "required": ["name", "ownerId", "type", "branch", "balance", "currency", "createdAt"]
     },
     "Transaction": {
       "title": "Transaction",
@@ -74,7 +80,7 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["description", "amount", "debitAccountId", "creditAccountId", "date"]
+      "required": ["description", "amount", "currency", "date", "debitAccountId", "creditAccountId", "categoryId", "userId", "createdAt", "updatedAt"]
     },
     "Category": {
       "title": "Category",
@@ -88,14 +94,15 @@
         "isSystem": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "type"]
+      "required": ["name", "type", "createdAt"]
     },
     "IncomeSource": {
-      "title": "IncomeSource",
+      "title": "Income Source",
       "description": "A source of income (Fixed, Variable, Spot).",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "ownerId": { "type": "string" },
         "flowType": { "type": "string", "enum": ["fixed", "variable", "spot"] },
         "amount": { "type": "number" },
         "currency": { "type": "string" },
@@ -105,13 +112,14 @@
         "revisions": { "type": "array", "items": { "type": "object" } },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "flowType", "amount", "targetAccountId"]
+      "required": ["name", "ownerId", "flowType", "amount", "currency", "targetAccountId", "createdAt"]
     },
     "ExpectedIncome": {
-      "title": "ExpectedIncome",
+      "title": "Expected Income",
       "description": "A scheduled or expected income entry.",
       "type": "object",
       "properties": {
+        "ownerId": { "type": "string" },
         "sourceId": { "type": "string" },
         "sourceName": { "type": "string" },
         "amount": { "type": "number" },
@@ -124,13 +132,14 @@
         "parentSourceId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["sourceId", "amount", "expectedDate", "status", "targetAccountId"]
+      "required": ["ownerId", "sourceId", "sourceName", "amount", "currency", "expectedDate", "status", "targetAccountId", "createdAt"]
     },
     "PlannedExpense": {
-      "title": "PlannedExpense",
+      "title": "Planned Expense",
       "description": "A scheduled or planned expense entry.",
       "type": "object",
       "properties": {
+        "ownerId": { "type": "string" },
         "title": { "type": "string" },
         "amount": { "type": "number" },
         "currency": { "type": "string" },
@@ -140,25 +149,26 @@
         "sourceAccountId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["title", "amount", "dueDate", "status", "categoryId"]
+      "required": ["ownerId", "title", "amount", "currency", "dueDate", "status", "categoryId", "createdAt"]
     },
     "SharedBudget": {
-      "title": "SharedBudget",
+      "title": "Shared Budget",
       "description": "A shared budget for tracking group expenses.",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "joinCode": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
         "participants": { "type": "array", "items": { "type": "object" } },
         "expenses": { "type": "array", "items": { "type": "object" } },
         "isSettled": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "date", "participants", "expenses", "isSettled"]
+      "required": ["name", "date", "participants", "expenses", "isSettled", "createdAt"]
     }
   },
   "firestore": {
-    "/users/{userId}": { "schema": "User", "description": "Global user profiles." },
+    "/users/{userId}": { "schema": "UserProfile", "description": "Global user profiles." },
     "/households/{householdId}": { "schema": "Household", "description": "Household groups." },
     "/households/{householdId}/accounts/{accountId}": { "schema": "Account", "description": "Accounts within a household." },
     "/households/{householdId}/transactions/{transactionId}": { "schema": "Transaction", "description": "Transactions within a household." },
