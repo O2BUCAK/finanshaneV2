@@ -1,0 +1,171 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "App user profile information.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "description": "Full name of the user." },
+        "email": { "type": "string", "format": "email", "description": "User's email address." },
+        "avatarUrl": { "type": "string", "description": "URL to user's profile picture." },
+        "activeHouseholdId": { "type": "string", "description": "Current household ID." },
+        "isAdmin": { "type": "boolean", "description": "Whether the user is an admin." },
+        "kvkkAccepted": { "type": "boolean", "description": "Whether KVKK terms are accepted." },
+        "kvkkAcceptedAt": { "type": "string", "format": "date-time" },
+        "role": { "type": "string", "description": "User's role (adult/child)." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "email"]
+    },
+    "Household": {
+      "title": "Household",
+      "description": "A group of users sharing finances.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the household." },
+        "ownerId": { "type": "string", "description": "UID of the household creator." },
+        "currency": { "type": "string", "description": "Default currency (e.g., TRY)." },
+        "members": { "type": "object", "description": "Map of userIds to roles/metadata." },
+        "joinCode": { "type": "string", "description": "Code to join the household." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "members", "joinCode"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "Financial account (Asset, Liability, Income, Expense).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["asset", "liability", "income", "expense"] },
+        "balance": { "type": "number" },
+        "currency": { "type": "string" },
+        "icon": { "type": "string" },
+        "color": { "type": "string" },
+        "isCreditCard": { "type": "boolean" },
+        "creditLimit": { "type": "number" },
+        "statementDay": { "type": "number" },
+        "isArchived": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "balance"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A double-entry financial record.",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "debitAccountId": { "type": "string" },
+        "creditAccountId": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "userId": { "type": "string" },
+        "notes": { "type": "string" },
+        "receiptUrl": { "type": "string" },
+        "isInstallment": { "type": "boolean" },
+        "installmentCount": { "type": "number" },
+        "installmentNumber": { "type": "number" },
+        "parentTransactionId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["description", "amount", "debitAccountId", "creditAccountId", "date"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Transaction category.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "icon": { "type": "string" },
+        "color": { "type": "string" },
+        "isSystem": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type"]
+    },
+    "IncomeSource": {
+      "title": "IncomeSource",
+      "description": "A source of income (Fixed, Variable, Spot).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "flowType": { "type": "string", "enum": ["fixed", "variable", "spot"] },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "targetAccountId": { "type": "string" },
+        "periodDay": { "type": "number" },
+        "isArchived": { "type": "boolean" },
+        "revisions": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "flowType", "amount", "targetAccountId"]
+    },
+    "ExpectedIncome": {
+      "title": "ExpectedIncome",
+      "description": "A scheduled or expected income entry.",
+      "type": "object",
+      "properties": {
+        "sourceId": { "type": "string" },
+        "sourceName": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "expectedDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "realized", "cancelled"] },
+        "targetAccountId": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "isRetroactive": { "type": "boolean" },
+        "parentSourceId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sourceId", "amount", "expectedDate", "status", "targetAccountId"]
+    },
+    "PlannedExpense": {
+      "title": "PlannedExpense",
+      "description": "A scheduled or planned expense entry.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "paid"] },
+        "categoryId": { "type": "string" },
+        "sourceAccountId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "amount", "dueDate", "status", "categoryId"]
+    },
+    "SharedBudget": {
+      "title": "SharedBudget",
+      "description": "A shared budget for tracking group expenses.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "participants": { "type": "array", "items": { "type": "object" } },
+        "expenses": { "type": "array", "items": { "type": "object" } },
+        "isSettled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "date", "participants", "expenses", "isSettled"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "Global user profiles." },
+    "/households/{householdId}": { "schema": "Household", "description": "Household groups." },
+    "/households/{householdId}/accounts/{accountId}": { "schema": "Account", "description": "Accounts within a household." },
+    "/households/{householdId}/transactions/{transactionId}": { "schema": "Transaction", "description": "Transactions within a household." },
+    "/households/{householdId}/categories/{categoryId}": { "schema": "Category", "description": "Categories within a household." },
+    "/households/{householdId}/incomeSources/{sourceId}": { "schema": "IncomeSource", "description": "Income sources within a household." },
+    "/households/{householdId}/expectedIncomes/{incomeId}": { "schema": "ExpectedIncome", "description": "Expected incomes within a household." },
+    "/households/{householdId}/plannedExpenses/{expenseId}": { "schema": "PlannedExpense", "description": "Planned expenses within a household." },
+    "/households/{householdId}/sharedBudgets/{budgetId}": { "schema": "SharedBudget", "description": "Shared budgets within a household." }
+  }
+}

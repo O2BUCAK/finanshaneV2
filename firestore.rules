@@ -1,0 +1,220 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          ('email' in request.auth.token && request.auth.token.email.lower() == "ersinozbucak@gmail.com") ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true)
+        );
+    }
+
+    function isValidString(val, min, max) {
+      return val is string && val.size() >= min && val.size() <= max;
+    }
+
+    function isValidEmail(email) {
+      return email is string && (email == '' || email.matches('^[^@]+@[^@]+\\.[^@]+$'));
+    }
+
+    function hasOnlyAllowedFields(allowedFields) {
+      return request.resource.data.keys().hasOnly(allowedFields);
+    }
+
+    function hasRequiredFields(requiredFields) {
+      return request.resource.data.keys().hasAll(requiredFields);
+    }
+
+    function getHousehold(householdId) {
+      return get(/databases/$(database)/documents/households/$(householdId)).data;
+    }
+    
+    function isHouseholdMember(householdId) {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/households/$(householdId)) && 
+         getHousehold(householdId).members[request.auth.uid] != null)
+      );
+    }
+    
+    function isHouseholdOwner(householdId) {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/households/$(householdId)) && 
+         getHousehold(householdId).ownerId == request.auth.uid)
+      );
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['fullName', 'email', 'avatarUrl', 'activeHouseholdId', 'isAdmin', 'kvkkAccepted', 'kvkkAcceptedAt', 'createdAt', 'updatedAt', 'role']) &&
+             isValidString(data.fullName, 1, 100) &&
+             isValidEmail(data.email) &&
+             (data.avatarUrl == null || isValidString(data.avatarUrl, 1, 500)) &&
+             (data.activeHouseholdId == null || isValidString(data.activeHouseholdId, 1, 100)) &&
+             (!('isAdmin' in data) || data.isAdmin is bool) &&
+             (!('kvkkAccepted' in data) || data.kvkkAccepted is bool) &&
+             (!('role' in data) || data.role is string) &&
+             (!('kvkkAcceptedAt' in data) || data.kvkkAcceptedAt is timestamp) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidHousehold(data) {
+      return hasOnlyAllowedFields(['name', 'ownerId', 'members', 'joinCode', 'currency', 'createdAt', 'updatedAt']) &&
+             isValidString(data.name, 1, 100) &&
+             isValidString(data.ownerId, 1, 100) &&
+             data.members is map &&
+             isValidString(data.joinCode, 1, 20) &&
+             isValidString(data.currency, 3, 3);
+    }
+
+    function isValidAccount(data) {
+      return hasOnlyAllowedFields(['name', 'type', 'subType', 'branch', 'balance', 'currency', 'ownerId', 'createdAt', 'updatedAt', 'assetDetails', 'depositDetails', 'points', 'icon', 'color', 'isCreditCard', 'creditLimit', 'isArchived', 'statementDay']) &&
+             isValidString(data.name, 1, 100) &&
+             data.type in ['asset', 'liability', 'income', 'expense'] &&
+             data.balance is number &&
+             isValidString(data.currency, 3, 3);
+    }
+
+    function isValidTransaction(data) {
+      return hasOnlyAllowedFields(['description', 'amount', 'currency', 'date', 'debitAccountId', 'creditAccountId', 'categoryId', 'userId', 'createdAt', 'updatedAt', 'isInstallment', 'installmentNumber', 'installmentCount', 'parentTransactionId', 'notes', 'receiptUrl']) &&
+             isValidString(data.description, 1, 200) &&
+             data.amount is number &&
+             isValidString(data.currency, 3, 3) &&
+             data.date is timestamp &&
+             isValidString(data.userId, 1, 100);
+    }
+
+    function isUnchanged(field) {
+      return ! (field in request.resource.data) || request.resource.data[field] == resource.data[field];
+    }
+
+    // ===============================================================
+    // Global Admin Access
+    // ===============================================================
+    match /{path=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // ===============================================================
+    // Users
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && 
+                      isValidUser(request.resource.data) && 
+                      request.resource.data.isAdmin == false;
+      allow update: if (isOwner(userId) && 
+                       isValidUser(request.resource.data) && 
+                       request.resource.data.isAdmin == resource.data.isAdmin &&
+                       isUnchanged('createdAt')) ||
+                      isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // ===============================================================
+    // Households
+    // ===============================================================
+    match /households/{householdId} {
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated();
+      
+      allow create: if isAuthenticated() && 
+                       isValidHousehold(request.resource.data) &&
+                       request.resource.data.ownerId == request.auth.uid;
+      
+      allow update: if (isHouseholdMember(householdId) || 
+                       (isAuthenticated() && request.resource.data.members[request.auth.uid] != null && request.resource.data.joinCode == resource.data.joinCode)) && 
+                      isValidHousehold(request.resource.data) &&
+                      isUnchanged('ownerId') &&
+                      isUnchanged('createdAt');
+      
+      allow delete: if isHouseholdOwner(householdId) || isAdmin();
+      
+      // Subcollections
+      match /accounts/{accountId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create: if isHouseholdMember(householdId) && isValidAccount(request.resource.data);
+        allow update: if isHouseholdMember(householdId) && 
+                        isValidAccount(request.resource.data) &&
+                        isUnchanged('ownerId') &&
+                        isUnchanged('createdAt');
+        allow delete: if isHouseholdOwner(householdId) || isAdmin();
+      }
+      
+      match /transactions/{transactionId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create: if isHouseholdMember(householdId) && isValidTransaction(request.resource.data);
+        allow update: if isHouseholdMember(householdId) && 
+                        isValidTransaction(request.resource.data) &&
+                        isUnchanged('userId') &&
+                        isUnchanged('createdAt');
+        allow delete: if isHouseholdOwner(householdId) || isAdmin();
+      }
+      
+      match /categories/{categoryId} {
+        allow read: if isHouseholdMember(householdId);
+        allow write: if isHouseholdMember(householdId);
+      }
+      
+      match /budgets/{budgetId} {
+        allow read: if isHouseholdMember(householdId);
+        allow write: if isHouseholdMember(householdId);
+      }
+      
+      match /sharedBudgets/{budgetId} {
+        allow read: if isAuthenticated() && (
+          isHouseholdMember(householdId) || 
+          (resource != null && resource.data.participants.hasAny([request.auth.uid]))
+        );
+        allow write: if isAuthenticated() && (
+          isHouseholdMember(householdId) || 
+          (resource != null && resource.data.participants.hasAny([request.auth.uid]))
+        );
+      }
+      
+      match /groups/{groupId} {
+        allow read: if isHouseholdMember(householdId);
+        allow write: if isHouseholdMember(householdId);
+      }
+
+      match /incomeSources/{sourceId} {
+        allow read: if isHouseholdMember(householdId);
+        allow write: if isHouseholdMember(householdId);
+      }
+
+      match /expectedIncomes/{incomeId} {
+        allow read: if isHouseholdMember(householdId);
+        allow write: if isHouseholdMember(householdId);
+      }
+
+      match /plannedExpenses/{expenseId} {
+        allow read: if isHouseholdMember(householdId);
+        allow write: if isHouseholdMember(householdId);
+      }
+    }
+
+    // Collection Group for Shared Budgets (to allow joining via code)
+    match /{path=**}/sharedBudgets/{budgetId} {
+      allow read: if isAuthenticated();
+      allow list: if isAuthenticated();
+    }
+  }
+}
