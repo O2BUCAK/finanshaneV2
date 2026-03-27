@@ -1465,7 +1465,12 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
 };
 
 const Login = () => {
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const handleGoogleLogin = async () => {
+    setIsLoggingIn(true);
+    setLoginError(null);
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
@@ -1498,7 +1503,6 @@ const Login = () => {
       }
 
       // If no household, we'll let them choose in the UI or create a default one
-      // For now, let's create a default one but with a join code
       const householdId = `household-${user.uid}`;
       const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       
@@ -1552,8 +1556,17 @@ const Login = () => {
         }, { merge: true });
       }
 
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'users/login');
+    } catch (error: any) {
+      console.error('Login Error:', error);
+      let message = "Giriş yapılırken bir hata oluştu.";
+      if (error.code === 'auth/popup-blocked') {
+        message = "Giriş penceresi tarayıcı tarafından engellendi. Lütfen izin verin.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        message = "Bu alan adı Firebase'de yetkilendirilmemiş. Lütfen Firebase Console'u kontrol edin.";
+      }
+      setLoginError(message);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -1570,12 +1583,24 @@ const Login = () => {
         <h1 className="text-3xl font-bold text-white mb-2">FinansHane</h1>
         <p className="text-zinc-300 mb-8">Ev finansal yönetim sistemine hoş geldiniz. Çift kayıtlı muhasebe ile bütçenizi kontrol altına alın.</p>
         
+        {loginError && (
+          <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-sm flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p className="text-left">{loginError}</p>
+          </div>
+        )}
+
         <button 
           onClick={handleGoogleLogin}
-          className="w-full bg-white text-black font-semibold py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-zinc-200 transition-colors"
+          disabled={isLoggingIn}
+          className="w-full bg-white text-black font-semibold py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-          Google ile Giriş Yap
+          {isLoggingIn ? (
+            <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+          )}
+          {isLoggingIn ? 'Giriş Yapılıyor...' : 'Google ile Giriş Yap'}
         </button>
       </motion.div>
     </div>
