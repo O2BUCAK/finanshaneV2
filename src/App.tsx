@@ -34,9 +34,16 @@ import {
   Check,
   ShieldCheck,
   ShieldAlert,
+  Info,
   Download,
-  Trash2
+  Trash2,
+  Eye,
+  EyeOff,
+  Shield,
+  Sun,
+  Moon
 } from 'lucide-react';
+import { localDB } from './db';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   XAxis, 
@@ -51,16 +58,25 @@ import {
   Cell
 } from 'recharts';
 import { AuthProvider, useAuth } from './hooks/useAuth';
-import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { auth, db } from './lib/firebase';
 import { formatAmount, parseAmount, cleanAmountInput } from './utils/formatters';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, Timestamp, orderBy, limit, collection, query, where, getDocs } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from './lib/error-handler';
 import { useCollection } from './hooks/useFirestore';
 import { useExchangeRates } from './hooks/useExchangeRates';
 import { useAssetPrices } from './hooks/useAssetPrices';
 import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, createInstallmentTransactions } from './lib/ledger';
-import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense } from './types';
+import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense, Household, UserProfile } from './types';
+import { 
+  db, 
+  doc, 
+  collection, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDoc,
+  query, 
+  where, 
+  getDocs, 
+  orderBy 
+} from './lib/firebase';
 
 import { Dashboard as DashboardView } from './components/Dashboard';
 import { Reports } from './components/Reports';
@@ -68,7 +84,6 @@ import { SharedBudgets } from './components/SharedBudgets';
 import { HouseholdMembers } from './components/HouseholdMembers';
 import { PlannedExpenses } from './components/PlannedExpenses';
 import { AdminPanel } from './components/AdminPanel';
-import { AiAdvisor } from './components/AiAdvisor';
 
 // --- Constants ---
 
@@ -82,8 +97,9 @@ const FLOW_TYPE_OPTIONS = [
 
 // --- Components ---
 
-const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, initialData }: any) => {
+const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, initialData, isPrivacyMode }: any) => {
   const { user } = useAuth();
+  const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [name, setName] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [flowType, setFlowType] = useState<IncomeFlowType>('fixed');
@@ -129,7 +145,7 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
         currency,
         targetAccountId,
         periodDay: flowType !== 'spot' ? parseInt(periodDay) : null,
-        createdAt: Timestamp.now(),
+        createdAt: new Date(),
       };
 
       const sourceRef = initialData 
@@ -149,10 +165,10 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
           sourceName: name,
           amount: parseFloat(amount),
           currency,
-          expectedDate: Timestamp.fromDate(expectedDate),
+          expectedDate: new Date(expectedDate),
           status: 'pending',
           targetAccountId,
-          createdAt: Timestamp.now(),
+          createdAt: new Date(),
         });
       }
 
@@ -447,8 +463,9 @@ const ASSET_OPTIONS = {
   fund: ['MAC', 'TCD', 'TKF', 'NNF', 'IPB', 'IIH', 'YAS', 'AFT', 'YAY', 'IPJ']
 };
 
-const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: any) => {
+const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPrivacyMode }: any) => {
   const { user } = useAuth();
+  const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [name, setName] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [institution, setInstitution] = useState('');
@@ -482,7 +499,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
     const q = parseFloat(val);
     const u = parseFloat(assetUnitPrice);
     if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setAssetTotalCost((q * u).toFixed(2));
+      setAssetTotalCost((q * u).toFixed(8));
     }
   };
 
@@ -491,7 +508,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
     const u = parseFloat(val);
     const q = parseFloat(assetQuantity);
     if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setAssetTotalCost((q * u).toFixed(2));
+      setAssetTotalCost((q * u).toFixed(8));
     }
   };
 
@@ -502,9 +519,9 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
     const q = parseFloat(assetQuantity);
     
     if (!isNaN(t) && !isNaN(u) && u > 0) {
-      setAssetQuantity((t / u).toFixed(6));
+      setAssetQuantity((t / u).toFixed(8));
     } else if (!isNaN(t) && !isNaN(q) && q > 0) {
-      setAssetUnitPrice((t / q).toFixed(4));
+      setAssetUnitPrice((t / q).toFixed(8));
     }
   };
 
@@ -640,7 +657,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
         const accId = finalName.toLowerCase().replace(/\s+/g, '-');
         await setDoc(doc(db, `households/${householdId}/accounts/${accId}`), {
           ...accountData,
-          createdAt: Timestamp.now()
+          createdAt: new Date()
         }, { merge: true });
       }
       onClose();
@@ -840,9 +857,15 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
                     <select
                       value={assetType}
                       onChange={(e) => {
-                        setAssetType(e.target.value as any);
+                        const newType = e.target.value as any;
+                        setAssetType(newType);
                         setAssetSymbol('');
                         setCustomAssetSymbol('');
+                        if (newType === 'crypto') {
+                          setCurrency('USD');
+                        } else {
+                          setCurrency('TRY');
+                        }
                       }}
                       className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none text-white cursor-pointer"
                     >
@@ -889,9 +912,9 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
                   <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Adet</label>
                   <input
                     type="text"
-                    value={formatAmount(assetQuantity)}
+                    value={formatAmount(assetQuantity, assetType === 'crypto' ? 8 : 2)}
                     onChange={(e) => handleQuantityChange(parseAmount(cleanAmountInput(e.target.value)))}
-                    placeholder="0,00"
+                    placeholder={assetType === 'crypto' ? "0,00000000" : "0,00"}
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
@@ -912,9 +935,9 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
                   <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Birim Fiyat ({assetType === 'crypto' ? '$' : '₺'})</label>
                   <input
                     type="text"
-                    value={formatAmount(assetUnitPrice)}
+                    value={formatAmount(assetUnitPrice, assetType === 'crypto' ? 8 : 2)}
                     onChange={(e) => handleUnitPriceChange(parseAmount(cleanAmountInput(e.target.value)))}
-                    placeholder="0,00"
+                    placeholder={assetType === 'crypto' ? "0,00000000" : "0,00"}
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
@@ -922,9 +945,9 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
                   <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Toplam Maliyet ({assetType === 'crypto' ? '$' : '₺'})</label>
                   <input
                     type="text"
-                    value={formatAmount(assetTotalCost)}
+                    value={formatAmount(assetTotalCost, assetType === 'crypto' ? 8 : 2)}
                     onChange={(e) => handleTotalCostChange(parseAmount(cleanAmountInput(e.target.value)))}
-                    placeholder="0,00"
+                    placeholder={assetType === 'crypto' ? "0,00000000" : "0,00"}
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
@@ -1051,9 +1074,9 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData }: an
   );
 };
 
-const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData }: any) => {
+const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData, isPrivacyMode }: any) => {
   const { user } = useAuth();
-  const { formatWithEquivalent } = useExchangeRates();
+  const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('TRY');
@@ -1073,7 +1096,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         setAmount(initialData.amount.toString());
         setCurrency(initialData.currency || 'TRY');
         setDescription(initialData.description);
-        setDate(initialData.date.toDate().toISOString().split('T')[0]);
+        setDate(initialData.date.toISOString().split('T')[0]);
         setDebitAccountId(initialData.debitAccountId);
         setCreditAccountId(initialData.creditAccountId);
         setCategoryId(initialData.categoryId);
@@ -1126,7 +1149,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         description,
         amount: parseFloat(amount),
         currency,
-        date: Timestamp.fromDate(new Date(date)),
+        date: new Date(date),
         debitAccountId,
         creditAccountId,
         categoryId: type === 'transfer' ? 'transfer' : categoryId,
@@ -1465,144 +1488,175 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
 };
 
 const Login = () => {
-  const [loginError, setLoginError] = useState<string | null>(null);
+  const { login, loginWithGoogle } = useAuth();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [kvkkAccepted, setKvkkAccepted] = useState(false);
+  const [isKvkkModalOpen, setIsKvkkModalOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleLocalLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!kvkkAccepted) {
+      setError('Lütfen KVKK Aydınlatma Metni\'ni onaylayın.');
+      return;
+    }
+    setIsLoggingIn(true);
+    setError(null);
+    try {
+      await login(email, name, kvkkAccepted);
+    } catch (err: any) {
+      setError(err.message || 'Giriş yapılamadı.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
+    if (!kvkkAccepted) {
+      setError('Lütfen KVKK Aydınlatma Metni\'ni onaylayın.');
+      return;
+    }
     setIsLoggingIn(true);
-    setLoginError(null);
-    const provider = new GoogleAuthProvider();
+    setError(null);
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      
-      // Check if user profile already exists
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        if (userData.activeHouseholdId) {
-          // User already has a household, just update profile info
-          await updateDoc(userRef, {
-            fullName: user.displayName || 'Kullanıcı',
-            email: user.email || '',
-            avatarUrl: user.photoURL || null,
-            isAdmin: user.email === 'ersinozbucak@gmail.com',
-            updatedAt: Timestamp.now()
-          });
-
-          // Also update household members info to ensure email is present
-          const householdRef = doc(db, 'households', userData.activeHouseholdId);
-          await updateDoc(householdRef, {
-            [`members.${user.uid}.email`]: user.email || '',
-            [`members.${user.uid}.displayName`]: user.displayName || 'Kullanıcı'
-          });
-          return;
-        }
+      // Small delay to ensure user gesture is processed cleanly
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await loginWithGoogle(kvkkAccepted);
+    } catch (err: any) {
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Giriş penceresi kapatıldı veya önizleme ortamı tarafından engellendi. Lütfen tekrar deneyin veya "Yerel Giriş" seçeneğini kullanın.');
+      } else {
+        setError(err.message || 'Google ile giriş yapılamadı.');
       }
-
-      // If no household, we'll let them choose in the UI or create a default one
-      const householdId = `household-${user.uid}`;
-      const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      
-      await setDoc(userRef, {
-        fullName: user.displayName || 'Kullanıcı',
-        email: user.email || '',
-        avatarUrl: user.photoURL || null,
-        role: 'adult',
-        isAdmin: user.email === 'ersinozbucak@gmail.com',
-        kvkkAccepted: false,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-        activeHouseholdId: householdId 
-      }, { merge: true });
-
-      const householdRef = doc(db, 'households', householdId);
-      await setDoc(householdRef, {
-        name: `${user.displayName?.split(' ')[0]} Ailesi`,
-        ownerId: user.uid,
-        currency: 'TRY',
-        joinCode,
-        members: {
-          [user.uid]: { 
-            role: 'owner', 
-            type: 'adult',
-            salaryVisible: true,
-            displayName: user.displayName || 'Kullanıcı',
-            email: user.email || ''
-          }
-        },
-        createdAt: Timestamp.now()
-      }, { merge: true });
-
-      // Create demo accounts and categories
-      const accounts = [
-        { name: 'Nakit', type: 'asset', branch: 'banking', institution: 'Nakit', subType: 'liquidity_deposit', balance: 5000, currency: 'TRY', icon: 'wallet', depositDetails: { isTimeDeposit: false } },
-        { name: 'Maaş Hesabı', type: 'asset', branch: 'banking', institution: 'Garanti BBVA', subType: 'liquidity_deposit', balance: 25000, currency: 'TRY', icon: 'bank', depositDetails: { isTimeDeposit: false } },
-        { name: 'Kredi Kartı', type: 'liability', branch: 'banking', institution: 'Akbank', subType: 'credit_debt', balance: 12000, currency: 'TRY', icon: 'credit-card', isCreditCard: true, creditLimit: 50000, points: [{ name: 'Chip-para', amount: 150 }] },
-        { name: 'Binance', type: 'asset', branch: 'crypto', institution: 'Binance', subType: 'global_exchange', balance: 1000, currency: 'USD', icon: 'bitcoin' },
-        { name: 'İstanbulkart', type: 'asset', branch: 'social_gift', institution: 'İstanbulkart', subType: 'transport', balance: 200, currency: 'TRY', icon: 'bus' },
-        { name: 'Maaş', type: 'income', balance: 0, currency: 'TRY', icon: 'briefcase' },
-        { name: 'Market', type: 'expense', balance: 0, currency: 'TRY', icon: 'shopping-cart' },
-        { name: 'Kira', type: 'expense', balance: 0, currency: 'TRY', icon: 'home' },
-      ];
-
-      for (const acc of accounts) {
-        const accId = acc.name.toLowerCase().replace(/\s+/g, '-');
-        await setDoc(doc(db, `households/${householdId}/accounts/${accId}`), {
-          ...acc,
-          createdAt: Timestamp.now()
-        }, { merge: true });
-      }
-
-    } catch (error: any) {
-      console.error('Login Error:', error);
-      let message = "Giriş yapılırken bir hata oluştu.";
-      if (error.code === 'auth/popup-blocked') {
-        message = "Giriş penceresi tarayıcı tarafından engellendi. Lütfen izin verin.";
-      } else if (error.code === 'auth/unauthorized-domain') {
-        message = "Bu alan adı Firebase'de yetkilendirilmemiş. Lütfen Firebase Console'u kontrol edin.";
-      }
-      setLoginError(message);
     } finally {
       setIsLoggingIn(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center"
+        className="w-full max-w-md space-y-8"
       >
-        <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-          <Wallet className="w-8 h-8 text-emerald-500" />
-        </div>
-        <h1 className="text-3xl font-bold text-white mb-2">FinansHane</h1>
-        <p className="text-zinc-300 mb-8">Ev finansal yönetim sistemine hoş geldiniz. Çift kayıtlı muhasebe ile bütçenizi kontrol altına alın.</p>
-        
-        {loginError && (
-          <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-sm flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <p className="text-left">{loginError}</p>
+        <div className="text-center space-y-2">
+          <div className="inline-flex p-4 bg-emerald-500/10 rounded-3xl mb-4">
+            <Wallet className="w-12 h-12 text-emerald-500" />
           </div>
-        )}
+          <h1 className="text-3xl font-bold text-white tracking-tight">FinansHane</h1>
+          <p className="text-zinc-400">Verileriniz cihazınızda şifrelenmiş olarak saklanır.</p>
+        </div>
 
-        <button 
-          onClick={handleGoogleLogin}
-          disabled={isLoggingIn}
-          className="w-full bg-white text-black font-semibold py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isLoggingIn ? (
-            <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+        <div className="space-y-6 bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 shadow-2xl">
+          {error && (
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              {error}
+            </div>
           )}
-          {isLoggingIn ? 'Giriş Yapılıyor...' : 'Google ile Giriş Yap'}
-        </button>
+
+          <button
+            onClick={handleGoogleLogin}
+            disabled={isLoggingIn}
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-100 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <path
+                fill="currentColor"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              />
+              <path
+                fill="currentColor"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              />
+              <path
+                fill="currentColor"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+              />
+              <path
+                fill="currentColor"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              />
+            </svg>
+            <span>Google ile Giriş Yap</span>
+          </button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-800"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-zinc-900 px-2 text-zinc-500">Veya Yerel Giriş</span>
+            </div>
+          </div>
+
+          <form onSubmit={handleLocalLogin} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Ad Soyad</label>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
+                placeholder="Adınız"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">E-posta</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
+                placeholder="E-posta adresiniz"
+              />
+            </div>
+
+            <div className="flex items-start gap-3 py-2">
+              <div className="flex items-center h-5">
+                <input
+                  id="kvkk"
+                  type="checkbox"
+                  checked={kvkkAccepted}
+                  onChange={(e) => setKvkkAccepted(e.target.checked)}
+                  className="w-4 h-4 bg-zinc-950 border-zinc-800 rounded text-emerald-500 focus:ring-emerald-500/20"
+                />
+              </div>
+              <label htmlFor="kvkk" className="text-xs text-zinc-400 leading-relaxed">
+                <button 
+                  type="button"
+                  onClick={() => setIsKvkkModalOpen(true)}
+                  className="text-emerald-500 hover:underline font-medium"
+                >
+                  KVKK Aydınlatma Metni
+                </button>
+                'ni okudum ve verilerimin yerel olarak işlenmesini onaylıyorum.
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoggingIn ? 'Giriş Yapılıyor...' : 'Yerel Giriş Yap'}
+            </button>
+          </form>
+        </div>
       </motion.div>
+
+      <KVKKConsentModal 
+        isOpen={isKvkkModalOpen} 
+        onAccept={() => {
+          setKvkkAccepted(true);
+          setIsKvkkModalOpen(false);
+        }} 
+      />
     </div>
   );
 };
@@ -1633,9 +1687,10 @@ const KVKKConsentModal = ({ isOpen, onAccept }: { isOpen: boolean; onAccept: () 
           <p>Kişisel verileriniz; bütçe yönetimi, finansal analizler, hane içi paylaşım ve uygulama hizmetlerinin sunulması amacıyla işlenmektedir.</p>
           
           <h4 className="text-white font-bold">2. Veri Güvenliği ve Saklama</h4>
-          <p>Verileriniz Google Cloud (Firebase) altyapısında güvenli bir şekilde saklanmakta ve sadece sizin yetkilendirdiğiniz kişiler tarafından erişilebilmektedir.</p>
+          <p>Verileriniz tarayıcınızın yerel veritabanında (IndexedDB) şifrelenmiş olarak saklanmaktadır. FinansHane, verilerinizi merkezi bir sunucuya göndermez; tüm finansal kayıtlarınız sadece sizin cihazınızda kalır. Güvenliğiniz için önemli işlemler (giriş, veri dışa aktarma vb.) yerel bir Güvenlik Günlüğü'nde kayıt altına alınır.</p>
           
           <h4 className="text-white font-bold">3. Veri Sahibi Hakları</h4>
+          <p>Dilediğiniz zaman uygulama ayarlarından tüm verilerinizi silebilir veya dışa aktarabilirsiniz. Verileriniz üzerinde tam kontrol sahibisiniz.</p>
           <p>Dilediğiniz zaman verilerinizin silinmesini talep edebilir, verilerinizi dışa aktarabilir veya işlenmesine itiraz edebilirsiniz. Ayarlar bölümünden "Verilerimi Sil" seçeneği ile tüm verilerinizi kalıcı olarak silebilirsiniz.</p>
           
           <p className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700 italic">
@@ -1659,11 +1714,12 @@ const KVKKConsentModal = ({ isOpen, onAccept }: { isOpen: boolean; onAccept: () 
 const SidebarItem = ({ icon: Icon, label, active = false, onClick }: any) => (
   <button 
     onClick={onClick}
-    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
-      active 
-        ? 'bg-emerald-500/10 text-emerald-500 font-medium' 
-        : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-    }`}
+    className={`
+      w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium
+      ${active 
+        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' 
+        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}
+    `}
   >
     <Icon className="w-5 h-5" />
     <span>{label}</span>
@@ -1689,10 +1745,57 @@ const StatCard = ({ title, amount, trend, icon: Icon, color }: any) => (
 );
 
 const JoinOrCreateHousehold = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-check for existing households on mount
+  useEffect(() => {
+    const checkExisting = async () => {
+      if (!user) return;
+      setLoading(true);
+      try {
+        // 1. Check if user profile has activeHouseholdId in Firestore
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (userData.activeHouseholdId) {
+            // If found, useAuth sync should handle it, but we can force a reload or just wait
+            // Actually, if we are here, it means localDB doesn't have it yet.
+            // Let's sync it to localDB manually here to speed up
+            const householdDoc = await getDoc(doc(db, 'households', userData.activeHouseholdId));
+            if (householdDoc.exists()) {
+              await localDB.households.put({ ...householdDoc.data(), id: householdDoc.id } as Household);
+              await localDB.users.update(user.uid, { activeHouseholdId: householdDoc.id });
+              return; // useLiveQuery will trigger re-render
+            }
+          }
+        }
+
+        // 2. If not in profile, check if user is a member of any household
+        // This is a bit more expensive but helpful
+        const q = query(collection(db, 'households'), where(`members.${user.uid}.role`, 'in', ['owner', 'member']));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const householdDoc = snap.docs[0];
+          const householdId = householdDoc.id;
+          
+          // Sync to localDB
+          await localDB.households.put({ ...householdDoc.data(), id: householdId } as Household);
+          await localDB.users.update(user.uid, { activeHouseholdId: householdId });
+          
+          // Update Firestore profile too
+          await updateDoc(doc(db, 'users', user.uid), { activeHouseholdId: householdId });
+        }
+      } catch (err) {
+        console.error('Check existing error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkExisting();
+  }, [user]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1713,20 +1816,29 @@ const JoinOrCreateHousehold = () => {
       const householdId = householdDoc.id;
 
       // Add user to household members
+      const memberData = {
+        role: 'member',
+        type: 'other',
+        salaryVisible: true,
+        displayName: user.displayName || 'Kullanıcı',
+        email: user.email || ''
+      };
+
       await updateDoc(doc(db, 'households', householdId), {
-        [`members.${user.uid}`]: {
-          role: 'member',
-          type: 'other',
-          salaryVisible: true,
-          displayName: user.displayName || 'Kullanıcı',
-          email: user.email || ''
-        }
+        [`members.${user.uid}`]: memberData
       });
 
-      // Update user profile
+      // Update user profile in Firestore
       await updateDoc(doc(db, 'users', user.uid), {
         activeHouseholdId: householdId
       });
+
+      // SYNC TO LOCALDB
+      const updatedHouseholdDoc = await getDoc(doc(db, 'households', householdId));
+      if (updatedHouseholdDoc.exists()) {
+        await localDB.households.put({ ...updatedHouseholdDoc.data(), id: householdId } as Household);
+      }
+      await localDB.users.update(user.uid, { activeHouseholdId: householdId });
 
     } catch (err: any) {
       console.error('Join error:', err);
@@ -1743,7 +1855,7 @@ const JoinOrCreateHousehold = () => {
       const householdId = `household-${user.uid}`;
       const newJoinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       
-      await setDoc(doc(db, 'households', householdId), {
+      const householdData = {
         name: `${user.displayName?.split(' ')[0]} Ailesi`,
         ownerId: user.uid,
         currency: 'TRY',
@@ -1757,12 +1869,19 @@ const JoinOrCreateHousehold = () => {
             email: user.email || ''
           }
         },
-        createdAt: Timestamp.now()
-      }, { merge: true });
+        createdAt: new Date()
+      };
+
+      await setDoc(doc(db, 'households', householdId), householdData, { merge: true });
 
       await updateDoc(doc(db, 'users', user.uid), {
         activeHouseholdId: householdId
       });
+
+      // SYNC TO LOCALDB
+      await localDB.households.put({ ...householdData, id: householdId } as Household);
+      await localDB.users.update(user.uid, { activeHouseholdId: householdId });
+
     } catch (err: any) {
       console.error('Create error:', err);
       setError('Hane oluşturulurken bir hata oluştu.');
@@ -1824,7 +1943,7 @@ const JoinOrCreateHousehold = () => {
         </button>
 
         <button 
-          onClick={() => signOut(auth)}
+          onClick={logout}
           className="w-full mt-6 text-zinc-400 text-sm hover:text-white transition-colors"
         >
           Çıkış Yap
@@ -1834,12 +1953,148 @@ const JoinOrCreateHousehold = () => {
   );
 };
 
+const AuditModal = ({ isOpen, onClose, logs }: { isOpen: boolean; onClose: () => void; logs: any[] }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl"
+      >
+        <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Shield className="w-5 h-5 text-emerald-500" /> Güvenlik Günlükleri
+          </h2>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-xl transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+          {logs.length === 0 && <p className="text-center text-zinc-400 py-8">Henüz işlem kaydı bulunmuyor.</p>}
+          {logs.map(log => (
+            <div key={log.id} className="p-3 bg-zinc-950 border border-zinc-800 rounded-2xl flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-white">{log.action}</p>
+                <p className="text-[10px] text-zinc-400 mt-1">{log.details}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-[10px] font-mono text-zinc-500">
+                  {new Date(log.timestamp).toLocaleString('tr-TR')}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="p-6 bg-zinc-950/50 border-t border-zinc-800">
+          <button 
+            onClick={onClose}
+            className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 rounded-2xl font-bold transition-all"
+          >
+            Kapat
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const NotificationsDropdown: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose}></div>
+      <div className="absolute right-0 mt-2 w-80 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 backdrop-blur-xl">
+        <h3 className="font-semibold text-white">Bildirimler</h3>
+        <button onClick={onClose} className="p-1 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-white">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="max-h-[400px] overflow-y-auto p-2 bg-zinc-900/50 backdrop-blur-xl">
+        <div className="p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer group">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+              <Plus className="w-5 h-5 text-emerald-500" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-white font-medium">Yeni İşlem Eklendi</p>
+              <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">Market alışverişi için 450.00 TRY harcama eklendi.</p>
+              <p className="text-[10px] text-zinc-500 mt-1">Az önce</p>
+            </div>
+            <div className="w-2 h-2 bg-emerald-500 rounded-full mt-1.5 flex-shrink-0"></div>
+          </div>
+        </div>
+        <div className="p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer group">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-white font-medium">Bütçe Uyarısı</p>
+              <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">Mutfak bütçenizin %80'ine ulaştınız.</p>
+              <p className="text-[10px] text-zinc-500 mt-1">2 saat önce</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer group">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+              <Info className="w-5 h-5 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-white font-medium">Sistem Güncellemesi</p>
+              <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">Yeni raporlama özellikleri eklendi. Hemen göz atın!</p>
+              <p className="text-[10px] text-zinc-500 mt-1">Dün</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="p-3 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-xl text-center">
+        <button className="text-xs text-emerald-500 hover:text-emerald-400 font-medium transition-colors">
+          Tümünü Gör
+        </button>
+      </div>
+    </div>
+    </>
+  );
+};
+
 const Dashboard = () => {
-  const { user, profile, household } = useAuth();
+  const { user, profile, household, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [isAccModalOpen, setIsAccModalOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const logSecurityAction = async (action: string, details?: string) => {
+    if (!user) return;
+    try {
+      const logId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `log-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      await localDB.auditLogs.add({
+        id: logId,
+        timestamp: new Date(),
+        action,
+        userId: user.uid,
+        details
+      });
+    } catch (e) {
+      console.error("Failed to log security action:", e);
+    }
+  };
+  const [isPrivacyMode, setIsPrivacyMode] = useState(() => {
+    const saved = localStorage.getItem('privacy_mode');
+    return saved === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('privacy_mode', String(isPrivacyMode));
+  }, [isPrivacyMode]);
+
+  const maskValue = (value: string | number) => {
+    if (!isPrivacyMode) return value;
+    return '••••••';
+  };
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
@@ -1848,7 +2103,28 @@ const Dashboard = () => {
   const [txToDelete, setTxToDelete] = useState<string | null>(null);
   const [isKVKKModalOpen, setIsKVKKModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(true);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved as 'light' | 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  useEffect(() => {
+    setIsNotificationsOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     if (profile && !profile.kvkkAccepted) {
@@ -1861,7 +2137,7 @@ const Dashboard = () => {
     try {
       await updateDoc(doc(db, 'users', user.uid), {
         kvkkAccepted: true,
-        kvkkAcceptedAt: Timestamp.now()
+        kvkkAcceptedAt: new Date()
       });
       setIsKVKKModalOpen(false);
     } catch (error) {
@@ -1869,7 +2145,13 @@ const Dashboard = () => {
     }
   };
 
-  const handleExportData = () => {
+  const handleLogout = async () => {
+    await logSecurityAction('logout', 'User logged out');
+    logout();
+  };
+
+  const handleExportData = async () => {
+    await logSecurityAction('export_data', 'User exported all data to JSON');
     const data = {
       profile,
       household,
@@ -1886,7 +2168,36 @@ const Dashboard = () => {
     a.click();
   };
 
+  const handleDeleteAllData = async () => {
+    if (!confirm("Tüm verileriniz kalıcı olarak silinecektir. Bu işlem geri alınamaz. Emin misiniz?")) return;
+    
+    try {
+      await logSecurityAction('delete_all_data', 'User initiated full data deletion');
+      await localDB.accounts.clear();
+      await localDB.transactions.clear();
+      await localDB.incomeSources.clear();
+      await localDB.expectedIncomes.clear();
+      await localDB.plannedExpenses.clear();
+      await localDB.sharedBudgets.clear();
+      // Keep audit logs for a short while or clear them too? Let's clear them for full privacy.
+      await localDB.auditLogs.clear();
+      
+      setNotification({ type: 'success', message: 'Tüm verileriniz başarıyla silindi.' });
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (e) {
+      console.error("Failed to delete data:", e);
+      setNotification({ type: 'error', message: 'Veriler silinirken bir hata oluştu.' });
+    }
+  };
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      localDB.auditLogs.orderBy('timestamp').reverse().limit(50).toArray().then(setAuditLogs);
+    }
+  }, [activeTab]);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -1894,47 +2205,6 @@ const Dashboard = () => {
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const handleDeleteAllData = async () => {
-    if (!user || !household) return;
-    setConfirmDialog({
-      message: 'Tüm verileriniz kalıcı olarak silinecektir. Bu işlem geri alınamaz. Emin misiniz?',
-      onConfirm: async () => {
-        setConfirmDialog(null);
-        setLoading(true);
-        try {
-          // Delete all related data
-          const collectionsToDelete = ['accounts', 'transactions', 'incomeSources', 'expectedIncomes', 'plannedExpenses'];
-          for (const coll of collectionsToDelete) {
-            const q = query(collection(db, `households/${household.id}/${coll}`));
-            const snap = await getDocs(q);
-            for (const d of snap.docs) {
-              await deleteDoc(d.ref);
-            }
-          }
-          
-          // If owner, delete household
-          if (household.ownerId === user.uid) {
-            await deleteDoc(doc(db, 'households', household.id));
-            await updateDoc(doc(db, 'users', user.uid), { activeHouseholdId: null });
-          } else {
-            // Just remove from members
-            const updates: any = {};
-            updates[`members.${user.uid}`] = null;
-            await updateDoc(doc(db, 'households', household.id), updates);
-            await updateDoc(doc(db, 'users', user.uid), { activeHouseholdId: null });
-          }
-
-          showNotification('Tüm veriler başarıyla silindi.', 'success');
-          setTimeout(() => window.location.reload(), 1000);
-        } catch (error) {
-          console.error('Delete data error:', error);
-          showNotification('Veriler silinirken bir hata oluştu.', 'error');
-        } finally {
-          setLoading(false);
-        }
-      }
-    });
-  };
 
   // Sync owner profile info and generate joinCode if missing
   useEffect(() => {
@@ -1992,7 +2262,7 @@ const Dashboard = () => {
     plannedExpenseConstraints
   );
 
-  const { formatWithEquivalent, convertToTRY } = useExchangeRates();
+  const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
 
   const assetSymbols = useMemo(() => {
     const symbols: { symbol: string; type: 'stock' | 'crypto' | 'fund' }[] = [];
@@ -2024,7 +2294,7 @@ const Dashboard = () => {
 
   const monthlyIncome = transactions
     .filter(tx => {
-      const txDate = tx.date.toDate();
+      const txDate = new Date(tx.date);
       const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
       const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
       return txDate.getMonth() === currentMonth && 
@@ -2036,7 +2306,7 @@ const Dashboard = () => {
 
   const monthlyExpense = transactions
     .filter(tx => {
-      const txDate = tx.date.toDate();
+      const txDate = new Date(tx.date);
       const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
       const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
       return txDate.getMonth() === currentMonth && 
@@ -2051,7 +2321,7 @@ const Dashboard = () => {
     .filter(c => c.type === 'expense')
     .map(cat => {
       const amount = transactions
-        .filter(tx => tx.categoryId === cat.id && tx.date.toDate().getMonth() === currentMonth)
+        .filter(tx => tx.categoryId === cat.id && new Date(tx.date).getMonth() === currentMonth)
         .reduce((sum, tx) => sum + tx.amount, 0);
       return { name: cat.name, value: amount };
     })
@@ -2067,10 +2337,10 @@ const Dashboard = () => {
   });
 
   const chartData = last7Days.map(date => {
-    const dateStr = date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+    const dateStr = new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
     const dayIncome = transactions
       .filter(tx => {
-        const txDate = tx.date.toDate();
+        const txDate = tx.date;
         const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
         const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
         return txDate.toDateString() === date.toDateString() &&
@@ -2081,7 +2351,7 @@ const Dashboard = () => {
 
     const dayExpense = transactions
       .filter(tx => {
-        const txDate = tx.date.toDate();
+        const txDate = tx.date;
         const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
         const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
         return txDate.toDateString() === date.toDateString() &&
@@ -2115,7 +2385,7 @@ const Dashboard = () => {
           ...cat,
           balance: 0,
           currency: 'TRY',
-          createdAt: Timestamp.now()
+          createdAt: new Date()
         }, { merge: true });
       }
     };
@@ -2183,7 +2453,7 @@ const Dashboard = () => {
         description: `${expected.sourceName} (Gerçekleşen)`,
         amount: expected.amount,
         currency: expected.currency,
-        date: Timestamp.now(),
+        date: new Date(),
         debitAccountId: expected.targetAccountId,
         creditAccountId: 'maas', // Default to salary category for now, or find the right one
         categoryId: 'maas',
@@ -2201,7 +2471,7 @@ const Dashboard = () => {
       // 3. If it's a fixed/variable source, generate the NEXT expected income
       const source = incomeSources.find(s => s.id === expected.sourceId);
       if (source && source.flowType !== 'spot') {
-        const nextDate = expected.expectedDate.toDate();
+        const nextDate = expected.expectedDate;
         nextDate.setMonth(nextDate.getMonth() + 1);
         
         await setDoc(doc(collection(db, `households/${household.id}/expectedIncomes`)), {
@@ -2209,10 +2479,10 @@ const Dashboard = () => {
           sourceName: source.name,
           amount: source.amount,
           currency: source.currency,
-          expectedDate: Timestamp.fromDate(nextDate),
+          expectedDate: new Date(nextDate),
           status: 'pending',
           targetAccountId: source.targetAccountId,
-          createdAt: Timestamp.now(),
+          createdAt: new Date(),
         });
       }
     } catch (error) {
@@ -2221,14 +2491,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-white">
-      <IncomeSourceModal 
-        isOpen={isIncomeModalOpen} 
-        onClose={() => { setIsIncomeModalOpen(false); setEditingIncomeSource(null); }}
-        householdId={household?.id}
-        accounts={allAccounts}
-        initialData={editingIncomeSource}
-      />
+    <div className="flex min-h-screen bg-background text-foreground">
       {/* Sidebar Overlay */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -2237,43 +2500,37 @@ const Dashboard = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden"
           />
         )}
       </AnimatePresence>
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:sticky top-0 left-0 h-screen w-72 border-r border-zinc-800 bg-zinc-950 flex flex-col z-50 transition-transform duration-300 lg:translate-x-0
+        fixed lg:sticky top-0 left-0 h-screen w-72 border-r border-border bg-card flex flex-col z-50 transition-transform duration-300 lg:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="p-8 flex items-center justify-between">
+        <div className="p-8 flex items-center justify-between border-b border-border/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
-              <Wallet className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
+              <Wallet className="w-6 h-6 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">FinansHane</h1>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">FinansHane</h1>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Kurumsal Finans</p>
+            </div>
           </div>
-          <button 
-            onClick={() => setIsSidebarOpen(false)}
-            className="lg:hidden p-2 text-zinc-400 hover:bg-zinc-800 rounded-xl transition-colors"
-          >
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 hover:bg-secondary rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <SidebarItem 
             icon={LayoutDashboard} 
             label="Genel Bakış" 
             active={activeTab === 'overview'} 
             onClick={() => handleTabChange('overview')} 
-          />
-          <SidebarItem 
-            icon={ArrowRightLeft} 
-            label="İşlemler" 
-            active={activeTab === 'transactions'} 
-            onClick={() => handleTabChange('transactions')} 
           />
           <SidebarItem 
             icon={CreditCard} 
@@ -2282,16 +2539,10 @@ const Dashboard = () => {
             onClick={() => handleTabChange('accounts')} 
           />
           <SidebarItem 
-            icon={Target} 
-            label="Bütçeler" 
-            active={activeTab === 'budgets'} 
-            onClick={() => handleTabChange('budgets')} 
-          />
-          <SidebarItem 
-            icon={Briefcase} 
-            label="Gelir Yönetimi" 
-            active={activeTab === 'income'} 
-            onClick={() => handleTabChange('income')} 
+            icon={ArrowRightLeft} 
+            label="İşlemler" 
+            active={activeTab === 'transactions'} 
+            onClick={() => handleTabChange('transactions')} 
           />
           <SidebarItem 
             icon={PieChart} 
@@ -2300,22 +2551,28 @@ const Dashboard = () => {
             onClick={() => handleTabChange('reports')} 
           />
           <SidebarItem 
+            icon={Target} 
+            label="Planlanan Giderler" 
+            active={activeTab === 'planned'} 
+            onClick={() => handleTabChange('planned')} 
+          />
+          <SidebarItem 
             icon={Users} 
-            label="Gruplar" 
+            label="Hane Grupları" 
             active={activeTab === 'groups'} 
             onClick={() => handleTabChange('groups')} 
           />
           {profile?.isAdmin && (
             <SidebarItem 
-              icon={ShieldAlert} 
-              label="Yönetim Paneli" 
+              icon={Shield} 
+              label="Yönetici Paneli" 
               active={activeTab === 'admin'} 
               onClick={() => handleTabChange('admin')} 
             />
           )}
         </nav>
 
-        <div className="p-4 border-t border-zinc-800">
+        <div className="p-4 border-t border-border/50">
           <SidebarItem 
             icon={Settings} 
             label="Ayarlar" 
@@ -2323,8 +2580,8 @@ const Dashboard = () => {
             onClick={() => handleTabChange('settings')} 
           />
           <button 
-            onClick={() => signOut(auth)}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-rose-500 hover:bg-rose-500/10 transition-all mt-2"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all font-medium mt-1"
           >
             <LogOut className="w-5 h-5" />
             <span>Çıkış Yap</span>
@@ -2333,46 +2590,74 @@ const Dashboard = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        {/* Header */}
-        <header className="h-20 border-b border-zinc-800 px-4 lg:px-8 flex items-center justify-between sticky top-0 bg-zinc-950/80 backdrop-blur-xl z-30">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <header className="sticky top-0 z-30 h-20 border-b border-border bg-background/80 backdrop-blur-xl flex items-center justify-between px-8">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden p-2 text-zinc-300 hover:bg-zinc-800 rounded-xl transition-colors"
+              className="lg:hidden p-2 hover:bg-secondary rounded-xl"
             >
               <Menu className="w-6 h-6" />
             </button>
-            <h2 className="text-lg lg:text-xl font-semibold">
-              {activeTab === 'overview' ? 'Genel Bakış' : 
-               activeTab === 'transactions' ? 'İşlemler' : 
-               activeTab === 'accounts' ? 'Hesaplar' : 
-               activeTab === 'budgets' ? 'Bütçeler' :
-               activeTab === 'income' ? 'Gelir Yönetimi' :
-               activeTab === 'reports' ? 'Raporlar' :
-               activeTab === 'groups' ? 'Gruplar' :
-               activeTab === 'admin' ? 'Yönetim Paneli' :
-               activeTab === 'settings' ? 'Ayarlar' : 'Panel'}
+            <h2 className="text-2xl font-bold tracking-tight">
+              {activeTab === 'overview' && 'Genel Bakış'}
+              {activeTab === 'accounts' && 'Hesaplarım'}
+              {activeTab === 'transactions' && 'İşlemler'}
+              {activeTab === 'reports' && 'Finansal Raporlar'}
+              {activeTab === 'planned' && 'Planlanan Giderler'}
+              {activeTab === 'groups' && 'Hane Grupları'}
+              {activeTab === 'settings' && 'Ayarlar'}
+              {activeTab === 'admin' && 'Yönetici Paneli'}
             </h2>
           </div>
-          
-          <div className="flex items-center gap-2 lg:gap-4">
-              <div className="relative hidden xl:block">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-300" />
-                <input 
-                  type="text" 
-                  placeholder="Ara..." 
-                  className="bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64 text-white"
-                />
-              </div>
-              <button className="p-2 text-zinc-300 hover:bg-zinc-800 rounded-xl transition-colors relative">
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsPrivacyMode(!isPrivacyMode)}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground"
+            >
+              {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              <span className="text-xs font-medium">Gizlilik</span>
+            </button>
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-secondary border border-border rounded-xl">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">KVKK Güvenli</span>
+            </div>
+            
+            <div className="h-8 w-px bg-border mx-1"></div>
+
+            <button 
+              onClick={toggleTheme}
+              className="p-2 text-muted-foreground hover:bg-secondary rounded-xl transition-all"
+              title={theme === 'light' ? 'Karanlık Mod' : 'Aydınlık Mod'}
+            >
+              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </button>
+
+            <div className="relative">
+              <button 
+                onClick={() => {
+                  setIsNotificationsOpen(!isNotificationsOpen);
+                  if (!isNotificationsOpen) setHasUnreadNotifications(false);
+                }}
+                className={`p-2 rounded-xl transition-all relative ${isNotificationsOpen ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary'}`}
+              >
                 <Bell className="w-5 h-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-zinc-950"></span>
+                {hasUnreadNotifications && (
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-destructive rounded-full border-2 border-background"></span>
+                )}
               </button>
-            <div className="h-8 w-px bg-zinc-800 mx-2"></div>
+              <NotificationsDropdown 
+                isOpen={isNotificationsOpen} 
+                onClose={() => setIsNotificationsOpen(false)} 
+              />
+            </div>
+
+            <div className="h-8 w-px bg-border mx-1"></div>
+
             <button 
               onClick={() => activeTab === 'accounts' ? setIsAccModalOpen(true) : setIsTxModalOpen(true)}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-all shadow-lg shadow-emerald-500/20"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-all shadow-lg shadow-primary/20"
             >
               <Plus className="w-4 h-4" />
               <span>{activeTab === 'accounts' ? 'Yeni Hesap' : 'Yeni İşlem'}</span>
@@ -2392,6 +2677,7 @@ const Dashboard = () => {
               plannedExpenses={plannedExpenses}
               assetPrices={assetPrices}
               members={household?.members}
+              isPrivacyMode={isPrivacyMode}
               onAddIncome={() => {
                 setEditingIncomeSource(null);
                 setIsIncomeModalOpen(true);
@@ -2406,7 +2692,7 @@ const Dashboard = () => {
                   description: 'Kripto Transferi',
                   amount: 0,
                   currency: 'TRY',
-                  date: Timestamp.now(),
+                  date: new Date(),
                   debitAccountId: '',
                   creditAccountId: '',
                   categoryId: '',
@@ -2421,7 +2707,7 @@ const Dashboard = () => {
                   description: 'Akbil Yüklemesi',
                   amount: 0,
                   currency: 'TRY',
-                  date: Timestamp.now(),
+                  date: new Date(),
                   debitAccountId: '', // Should be social card
                   creditAccountId: '', // Should be credit card or bank
                   categoryId: '', // Transport category
@@ -2436,7 +2722,7 @@ const Dashboard = () => {
           {activeTab === 'transactions' && (
             <div className="space-y-8">
               {/* Installment Summary Section */}
-              {transactions.some(t => t.isInstallment && t.date.toDate() > new Date()) && (
+              {transactions.some(t => t.isInstallment && t.date > new Date()) && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-bold flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-blue-500" />
@@ -2444,8 +2730,8 @@ const Dashboard = () => {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {transactions
-                      .filter(t => t.isInstallment && t.date.toDate() > new Date())
-                      .sort((a, b) => a.date.toMillis() - b.date.toMillis())
+                      .filter(t => t.isInstallment && t.date > new Date())
+                      .sort((a, b) => a.date.getTime() - b.date.getTime())
                       .slice(0, 6)
                       .map(tx => (
                         <div key={tx.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl hover:border-blue-500/30 transition-all group">
@@ -2453,7 +2739,7 @@ const Dashboard = () => {
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 uppercase tracking-wider">
                               {tx.installmentNumber}/{tx.installmentCount} Taksit
                             </span>
-                            <span className="text-xs text-zinc-300">{tx.date.toDate().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</span>
+                            <span className="text-xs text-zinc-300">{new Date(tx.date).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</span>
                           </div>
                           <h4 className="text-sm font-medium text-white truncate">{tx.description}</h4>
                           <div className="flex justify-between items-end mt-3">
@@ -2494,7 +2780,7 @@ const Dashboard = () => {
                       return (
                         <tr key={tx.id} className="group hover:bg-zinc-800/50 transition-colors cursor-pointer" onClick={() => { setEditingTransaction(tx); setIsTxModalOpen(true); }}>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-zinc-300">{tx.date.toDate().toLocaleDateString('tr-TR')}</div>
+                            <div className="text-sm text-zinc-300">{new Date(tx.date).toLocaleDateString('tr-TR')}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
@@ -2666,6 +2952,10 @@ const Dashboard = () => {
                                     </span>
                                   </div>
                                   <div className="flex justify-between items-center text-sm">
+                                    <span className="text-zinc-300">Adet:</span>
+                                    <span className="font-medium">{acc.assetDetails.quantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-sm">
                                     <span className="text-zinc-300">Güncel Fiyat:</span>
                                     <span className="font-medium">{assetPrices[acc.assetDetails.symbol].price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {assetPrices[acc.assetDetails.symbol].currency}</span>
                                   </div>
@@ -2702,6 +2992,9 @@ const Dashboard = () => {
                                 <>
                                   <div className="flex items-baseline gap-1">
                                     <span className="text-2xl font-bold">{formatWithEquivalent(acc.balance, acc.currency || 'TRY')}</span>
+                                  </div>
+                                  <div className="text-sm text-zinc-300">
+                                    Adet: {acc.assetDetails.quantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}
                                   </div>
                                   <div className="text-xs text-zinc-300 animate-pulse">Güncel fiyat bekleniyor...</div>
                                 </>
@@ -2754,6 +3047,7 @@ const Dashboard = () => {
                 categories={categories}
                 accounts={accounts}
                 members={household?.members}
+                isPrivacyMode={isPrivacyMode}
               />
             </div>
           )}
@@ -2798,8 +3092,30 @@ const Dashboard = () => {
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl">
-                <h3 className="text-xl font-bold mb-6">KVKK ve Veri Yönetimi</h3>
+                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <ShieldCheck className="w-6 h-6 text-emerald-500" /> KVKK ve Bilgi Güvenliği
+                </h3>
+                <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl mb-6">
+                  <p className="text-sm text-emerald-200/80 leading-relaxed">
+                    <strong>Güvenlik Notu:</strong> FinansHane, verilerinizi merkezi bir sunucuda değil, tarayıcınızın 
+                    <strong> IndexedDB</strong> veritabanında yerel olarak saklar. Tüm hassas veriler cihazınızda 
+                    şifrelenmiş olarak tutulur. 2026 Türkiye KVKK standartlarına tam uyumludur.
+                  </p>
+                </div>
                 <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
+                    <div>
+                      <h4 className="font-bold text-sm">Güvenlik Günlükleri</h4>
+                      <p className="text-xs text-zinc-300">Son 50 güvenlik işlemini görüntüleyin.</p>
+                    </div>
+                    <button 
+                      onClick={() => setIsAuditModalOpen(true)}
+                      className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-xl transition-all text-zinc-400"
+                    >
+                      <Shield className="w-5 h-5" />
+                    </button>
+                  </div>
+
                   <div className="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
                     <div>
                       <h4 className="font-bold text-sm">Verilerimi Dışa Aktar</h4>
@@ -2816,7 +3132,7 @@ const Dashboard = () => {
                   <div className="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
                     <div>
                       <h4 className="font-bold text-sm text-rose-500">Hesabımı ve Verilerimi Sil</h4>
-                      <p className="text-xs text-zinc-300">Tüm verileriniz kalıcı olarak silinecektir.</p>
+                      <p className="text-xs text-zinc-300">Tüm verileriniz kalıcı olarak cihazınızdan silinecektir.</p>
                     </div>
                     <button 
                       onClick={handleDeleteAllData}
@@ -2857,7 +3173,7 @@ const Dashboard = () => {
               <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl">
                 <h3 className="text-xl font-bold mb-6">Oturum</h3>
                 <button 
-                  onClick={() => signOut(auth)}
+                  onClick={handleLogout}
                   className="w-full flex items-center justify-center gap-3 px-4 py-4 rounded-2xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all font-bold"
                 >
                   <LogOut className="w-5 h-5" />
@@ -2953,7 +3269,7 @@ const Dashboard = () => {
                           <tr key={expected.id} className="group hover:bg-white/[0.02] transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm text-white font-medium">
-                                {expected.expectedDate.toDate().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
+                                {new Date(expected.expectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -3012,6 +3328,7 @@ const Dashboard = () => {
               accounts={accounts}
               members={household?.members}
               initialData={editingIncomeSource}
+              isPrivacyMode={isPrivacyMode}
             />
           </div>
         )}
@@ -3051,6 +3368,7 @@ const Dashboard = () => {
           categories={categories}
           members={household?.members}
           initialData={editingTransaction}
+          isPrivacyMode={isPrivacyMode}
         />
         <AccountModal
           isOpen={isAccModalOpen}
@@ -3058,6 +3376,7 @@ const Dashboard = () => {
           householdId={household?.id}
           members={household?.members}
           initialData={editingAccount}
+          isPrivacyMode={isPrivacyMode}
         />
 
         {/* Delete Transaction Confirmation Modal */}
@@ -3100,6 +3419,12 @@ const Dashboard = () => {
             </div>
           )}
         </AnimatePresence>
+        <AuditModal 
+          isOpen={isAuditModalOpen}
+          onClose={() => setIsAuditModalOpen(false)}
+          logs={auditLogs}
+        />
+
         {/* Notifications */}
         <AnimatePresence>
           {notification && (

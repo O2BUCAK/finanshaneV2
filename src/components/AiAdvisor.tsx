@@ -36,7 +36,11 @@ export const AiAdvisor = ({ isOpen, onClose, accounts, transactions }: AiAdvisor
       // Prepare context for the AI
       const context = {
         accounts: accounts.map(a => ({ name: a.name, balance: a.balance, currency: a.currency, type: a.type })),
-        recentTransactions: transactions.slice(0, 10).map(t => ({ amount: t.amount, category: t.category, date: t.date?.toDate?.()?.toLocaleDateString() || t.date })),
+        recentTransactions: transactions.slice(0, 10).map(t => ({ 
+          amount: t.amount, 
+          category: t.category, 
+          date: t.date instanceof Date ? t.date.toLocaleDateString() : t.date 
+        })),
       };
 
       const response = await fetch('/api/chat', {
@@ -91,34 +95,34 @@ export const AiAdvisor = ({ isOpen, onClose, accounts, transactions }: AiAdvisor
               initial={{ opacity: 0, y: 100, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 100, scale: 0.95 }}
-              className="relative w-full sm:w-[450px] h-[80vh] sm:h-[600px] bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
+              className="relative w-full sm:w-[450px] h-[80vh] sm:h-[600px] bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
             >
               {/* Header */}
-              <div className="p-6 border-b border-zinc-800 flex items-center justify-between bg-gradient-to-r from-emerald-500/10 to-transparent">
+              <div className="p-6 border-b border-border flex items-center justify-between bg-gradient-to-r from-primary/10 to-transparent">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                    <Bot className="w-6 h-6 text-white" />
+                  <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
+                    <Bot className="w-6 h-6 text-primary-foreground" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-white">Finansal Danışman</h3>
+                    <h3 className="font-bold text-foreground">Finansal Danışman</h3>
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                      <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Çevrimiçi</span>
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Çevrimiçi</span>
                     </div>
                   </div>
                 </div>
                 <button 
                   onClick={onClose}
-                  className="p-2 hover:bg-zinc-800 rounded-xl transition-colors"
+                  className="p-2 hover:bg-muted rounded-xl transition-colors"
                 >
-                  <X className="w-5 h-5 text-zinc-400" />
+                  <X className="w-5 h-5 text-muted-foreground" />
                 </button>
               </div>
 
               {/* Messages */}
               <div 
                 ref={scrollRef}
-                className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth"
+                className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth bg-background/50"
               >
                 {messages.map((msg, i) => (
                   <div 
@@ -127,10 +131,10 @@ export const AiAdvisor = ({ isOpen, onClose, accounts, transactions }: AiAdvisor
                   >
                     <div className={`max-w-[85%] rounded-2xl p-4 ${
                       msg.role === 'user' 
-                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/10' 
-                        : 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/10' 
+                        : 'bg-muted text-foreground border border-border'
                     }`}>
-                      <div className="prose prose-invert prose-sm max-w-none">
+                      <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'dark:prose-invert'}`}>
                         <Markdown>{msg.content}</Markdown>
                       </div>
                     </div>
@@ -138,11 +142,11 @@ export const AiAdvisor = ({ isOpen, onClose, accounts, transactions }: AiAdvisor
                 ))}
                 {loading && (
                   <div className="flex justify-start">
-                    <div className="bg-zinc-800 border border-zinc-700 rounded-2xl p-4 flex items-center gap-2">
+                    <div className="bg-muted border border-border rounded-2xl p-4 flex items-center gap-2">
                       <div className="flex gap-1">
-                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" />
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
                       </div>
                     </div>
                   </div>
@@ -150,7 +154,7 @@ export const AiAdvisor = ({ isOpen, onClose, accounts, transactions }: AiAdvisor
               </div>
 
               {/* Input */}
-              <div className="p-6 border-t border-zinc-800 bg-zinc-900/50">
+              <div className="p-6 border-t border-border bg-card/50">
                 <div className="relative">
                   <input 
                     type="text"
@@ -158,17 +162,17 @@ export const AiAdvisor = ({ isOpen, onClose, accounts, transactions }: AiAdvisor
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                     placeholder="Bir soru sor..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl pl-4 pr-12 py-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white placeholder:text-zinc-500"
+                    className="w-full bg-background border border-border rounded-2xl pl-4 pr-12 py-4 focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground placeholder:text-muted-foreground"
                   />
                   <button 
                     onClick={handleSend}
                     disabled={!input.trim() || loading}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-800 text-white rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-primary hover:bg-primary/90 disabled:bg-muted text-primary-foreground rounded-xl transition-all shadow-lg shadow-primary/20"
                   >
                     <Send className="w-5 h-5" />
                   </button>
                 </div>
-                <p className="mt-3 text-[10px] text-zinc-500 text-center uppercase tracking-widest font-medium">
+                <p className="mt-3 text-[10px] text-muted-foreground text-center uppercase tracking-widest font-medium">
                   Gemini AI tarafından desteklenmektedir
                 </p>
               </div>

@@ -50,7 +50,7 @@ export const SankeyChart: React.FC<SankeyChartProps> = ({ data, width = 800, hei
   }, [data, width, height]);
 
   if (!nodes.length || !links.length) {
-    return <div className="flex items-center justify-center h-full text-zinc-500">Yeterli veri yok</div>;
+    return <div className="flex items-center justify-center h-full text-muted-foreground">Yeterli veri yok</div>;
   }
 
   return (
@@ -119,13 +119,13 @@ export const SankeyChart: React.FC<SankeyChartProps> = ({ data, width = 800, hei
                 className="overflow-visible pointer-events-none"
               >
                 <div className={`flex flex-col justify-center h-full ${isTotal ? 'items-center' : (node.x0 < width / 2 ? 'items-start' : 'items-end')}`}>
-                  <div className="bg-zinc-800/90 backdrop-blur-sm border border-zinc-700/50 px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
+                  <div className="bg-card/90 backdrop-blur-sm border border-border px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
                     {node.x0 < width / 2 && !isTotal && (
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }}></div>
                     )}
                     <div className="flex flex-col items-start">
-                      <span className="text-xs font-medium text-zinc-200 truncate max-w-[120px]">{node.name}</span>
-                      <span className="text-sm font-bold text-white">{formatCurrency(node.displayValue !== undefined ? node.displayValue : node.value)}</span>
+                      <span className="text-xs font-medium text-muted-foreground truncate max-w-[120px]">{node.name}</span>
+                      <span className="text-sm font-bold text-foreground">{formatCurrency(node.displayValue !== undefined ? node.displayValue : node.value)}</span>
                     </div>
                     {node.x0 >= width / 2 && !isTotal && (
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }}></div>

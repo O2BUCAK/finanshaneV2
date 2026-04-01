@@ -18,6 +18,7 @@ interface DashboardProps {
   plannedExpenses: PlannedExpense[];
   assetPrices?: Record<string, { price: number; currency: string }>;
   members?: Record<string, any>;
+  isPrivacyMode?: boolean;
   onAddIncome: () => void;
   onAddTransaction: () => void;
   onCryptoTransfer: () => void;
@@ -34,6 +35,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   plannedExpenses: allPlannedExpenses,
   assetPrices = {},
   members,
+  isPrivacyMode = false,
   onAddIncome,
   onAddTransaction,
   onCryptoTransfer,
@@ -75,7 +77,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   ];
 
   const [layout, setLayout] = useState(defaultLayout);
-  const { formatWithEquivalent, convertToTRY } = useExchangeRates();
+  const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
 
   // Calculations
   const totalAssets = accounts.filter(a => a.type === 'asset').reduce((sum, a) => {
@@ -110,7 +112,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const currentYear = new Date().getFullYear();
   
   const currentMonthTxs = transactions.filter(t => {
-    const d = t.date.toDate();
+    const d = t.date;
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
   });
 
@@ -131,7 +133,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const getPaymentStatusColor = (date: Date, status: string) => {
     if (status === 'paid' || status === 'realized') return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
     
-    const diffTime = date.getTime() - today.getTime();
+    const diffTime = new Date(date).getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) return 'bg-rose-500/10 text-rose-500 border-rose-500/20'; // Overdue
@@ -143,13 +145,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const getPaymentStatusLabel = (date: Date, status: string) => {
     if (status === 'paid' || status === 'realized') return 'Tamamlandı';
     
-    const diffTime = date.getTime() - today.getTime();
+    const diffTime = new Date(date).getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) return `${Math.abs(diffDays)} gün gecikti`;
     if (diffDays === 0) return 'Bugün';
     if (diffDays <= 3) return `${diffDays} gün kaldı`;
-    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+    return new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
   };
 
   // Combine expected incomes, planned expenses, and future installments for the calendar
@@ -160,7 +162,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         title: inc.sourceName,
         amount: inc.amount,
         currency: inc.currency || 'TRY',
-        date: inc.expectedDate.toDate(),
+        date: inc.expectedDate,
         status: inc.status,
         type: 'income' as const
       })),
@@ -169,22 +171,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
         title: exp.title,
         amount: exp.amount,
         currency: exp.currency || 'TRY',
-        date: exp.dueDate.toDate(),
+        date: exp.dueDate,
         status: exp.status,
         type: 'expense' as const
       })),
-      ...transactions.filter(t => t.isInstallment && t.date.toDate() > today).map(t => ({
+      ...transactions.filter(t => t.isInstallment && t.date > today).map(t => ({
         id: t.id,
         title: `${t.description} (${t.installmentNumber}/${t.installmentCount})`,
         amount: t.amount,
         currency: t.currency || 'TRY',
-        date: t.date.toDate(),
+        date: t.date,
         status: 'pending',
         type: 'expense' as const
       }))
     ];
 
-    return items.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [expectedIncomes, plannedExpenses, transactions, today]);
 
   const toggleModuleVisibility = (id: string) => {
@@ -195,58 +197,59 @@ export const Dashboard: React.FC<DashboardProps> = ({
     switch (id) {
       case 'master_widget':
         return (
-          <div className="bg-zinc-900 border border-white/5 rounded-3xl p-6 relative group">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-2 text-zinc-200">
+          <div className="corporate-card p-8 relative group overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-3xl" />
+            <div className="flex justify-between items-start mb-6 relative z-10">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <Wallet className="w-5 h-5" />
-                <span className="font-medium">Toplam Varlık Özeti</span>
+                <span className="font-semibold uppercase tracking-wider text-xs">Toplam Varlık Özeti</span>
               </div>
-              <GripHorizontal className="w-5 h-5 text-zinc-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
-            <div className="flex items-end gap-4">
-              <h2 className="text-4xl font-bold text-white">
+            <div className="flex items-end gap-4 relative z-10">
+              <h2 className="text-5xl font-bold tracking-tight text-foreground">
                 {formatWithEquivalent(netWorth, 'TRY')}
               </h2>
-              <div className={`flex items-center gap-1 text-sm font-bold mb-1 ${netWorthChange >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-bold mb-1.5 ${netWorthChange >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
                 {netWorthChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                 {Math.abs(netWorthChange).toFixed(1)}%
               </div>
             </div>
-            <p className="text-xs text-zinc-200 mt-2">Geçen aya göre değişim</p>
+            <p className="text-xs text-muted-foreground mt-3 font-medium">Geçen aya göre finansal performans değişimi</p>
           </div>
         );
 
       case 'branch_distribution':
         return (
-          <div className="bg-zinc-900 border border-white/5 rounded-3xl p-6 relative group">
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-2 text-zinc-200">
+          <div className="corporate-card p-8 relative group">
+            <div className="flex justify-between items-start mb-8">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <PieChart className="w-5 h-5" />
-                <span className="font-medium">Dal Bazlı Varlık Dağılımı</span>
+                <span className="font-semibold uppercase tracking-wider text-xs">Varlık Dağılımı</span>
               </div>
-              <GripHorizontal className="w-5 h-5 text-zinc-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button className="flex flex-col p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 hover:bg-blue-500/10 transition-colors text-left">
-                <div className="flex items-center gap-2 text-blue-500 mb-2">
-                  <Building2 className="w-4 h-4" />
-                  <span className="font-bold text-sm">Bankalar</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
+                <div className="flex items-center gap-2 text-blue-500 mb-3">
+                  <Building2 className="w-5 h-5" />
+                  <span className="font-bold text-xs uppercase tracking-wide">Bankalar</span>
                 </div>
-                <span className="text-xl font-bold text-white">{formatWithEquivalent(bankBalance, 'TRY')}</span>
+                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(bankBalance, 'TRY')}</span>
               </button>
-              <button className="flex flex-col p-4 rounded-2xl bg-orange-500/5 border border-orange-500/10 hover:bg-orange-500/10 transition-colors text-left">
-                <div className="flex items-center gap-2 text-orange-500 mb-2">
-                  <Bitcoin className="w-4 h-4" />
-                  <span className="font-bold text-sm">Kripto</span>
+              <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
+                <div className="flex items-center gap-2 text-orange-500 mb-3">
+                  <Bitcoin className="w-5 h-5" />
+                  <span className="font-bold text-xs uppercase tracking-wide">Kripto</span>
                 </div>
-                <span className="text-xl font-bold text-white">{formatWithEquivalent(cryptoBalance, 'TRY')}</span>
+                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(cryptoBalance, 'TRY')}</span>
               </button>
-              <button className="flex flex-col p-4 rounded-2xl bg-purple-500/5 border border-purple-500/10 hover:bg-purple-500/10 transition-colors text-left">
-                <div className="flex items-center gap-2 text-purple-500 mb-2">
-                  <Gift className="w-4 h-4" />
-                  <span className="font-bold text-sm">Sosyal/Hediye</span>
+              <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
+                <div className="flex items-center gap-2 text-purple-500 mb-3">
+                  <Gift className="w-5 h-5" />
+                  <span className="font-bold text-xs uppercase tracking-wide">Sosyal/Hediye</span>
                 </div>
-                <span className="text-xl font-bold text-white">{formatWithEquivalent(socialBalance, 'TRY')}</span>
+                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(socialBalance, 'TRY')}</span>
               </button>
             </div>
           </div>
@@ -254,29 +257,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'payment_calendar':
         return (
-          <div className="bg-zinc-900 border border-white/5 rounded-3xl p-6 relative group">
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-2 text-zinc-200">
+          <div className="corporate-card p-8 relative group">
+            <div className="flex justify-between items-start mb-8">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <Calendar className="w-5 h-5" />
-                <span className="font-medium">Dinamik Ödeme Takvimi</span>
+                <span className="font-semibold uppercase tracking-wider text-xs">Ödeme Takvimi</span>
               </div>
-              <GripHorizontal className="w-5 h-5 text-zinc-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
             <div className="space-y-3">
               {calendarItems.length > 0 ? calendarItems.map(item => {
                 const colorClass = getPaymentStatusColor(item.date, item.status);
                 const label = getPaymentStatusLabel(item.date, item.status);
                 return (
-                  <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border ${colorClass} bg-opacity-10`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${colorClass.split(' ')[1].replace('text-', 'bg-')}`} />
+                  <div key={item.id} className={`flex items-center justify-between p-5 rounded-2xl border ${colorClass} bg-opacity-5 transition-all hover:bg-opacity-10`}>
+                    <div className="flex items-center gap-4">
+                      <div className={`w-2.5 h-2.5 rounded-full ${colorClass.split(' ')[1].replace('text-', 'bg-')} shadow-sm`} />
                       <div>
-                        <p className="font-bold text-sm">{item.title}</p>
-                        <p className="text-xs opacity-90">{label}</p>
+                        <p className="font-bold text-sm text-foreground">{item.title}</p>
+                        <p className="text-xs font-medium opacity-80">{label}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold">
+                      <p className={`font-bold ${item.type === 'income' ? 'text-emerald-500' : 'text-foreground'}`}>
                         {item.type === 'income' ? '+' : '-'}
                         {formatWithEquivalent(item.amount, item.currency)}
                       </p>
@@ -284,7 +287,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                 );
               }) : (
-                <p className="text-zinc-200 text-sm text-center py-4">Yaklaşan ödeme veya gelir bulunmuyor.</p>
+                <div className="text-center py-12 bg-secondary/30 rounded-2xl border border-dashed border-border">
+                  <p className="text-muted-foreground text-sm font-medium">Yaklaşan ödeme veya gelir bulunmuyor.</p>
+                </div>
               )}
             </div>
           </div>
@@ -292,36 +297,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'cash_flow_radar':
         return (
-          <div className="bg-zinc-900 border border-white/5 rounded-3xl p-6 relative group">
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-2 text-zinc-200">
+          <div className="corporate-card p-8 relative group">
+            <div className="flex justify-between items-start mb-8">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <TrendingUp className="w-5 h-5" />
-                <span className="font-medium">Nakit Akış Radarı (Bu Ay)</span>
+                <span className="font-semibold uppercase tracking-wider text-xs">Nakit Akış Radarı (Bu Ay)</span>
               </div>
-              <GripHorizontal className="w-5 h-5 text-zinc-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-zinc-200">Toplam Girdi</span>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-muted-foreground font-medium">Toplam Girdi</span>
                   <span className="text-emerald-500 font-bold">{formatWithEquivalent(totalIncome, 'TRY')}</span>
                 </div>
-                <div className="w-full bg-zinc-800 rounded-full h-2">
-                  <div className="bg-emerald-500 h-2 rounded-full" style={{ width: '100%' }}></div>
+                <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    className="bg-emerald-500 h-full rounded-full" 
+                  />
                 </div>
               </div>
               <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-zinc-200">Toplam Gider</span>
-                  <span className="text-rose-500 font-bold">{formatWithEquivalent(totalExpense, 'TRY')}</span>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-muted-foreground font-medium">Toplam Gider</span>
+                  <span className="text-destructive font-bold">{formatWithEquivalent(totalExpense, 'TRY')}</span>
                 </div>
-                <div className="w-full bg-zinc-800 rounded-full h-2">
-                  <div className="bg-rose-500 h-2 rounded-full" style={{ width: totalIncome > 0 ? `${Math.min((totalExpense / totalIncome) * 100, 100)}%` : '0%' }}></div>
+                <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: totalIncome > 0 ? `${Math.min((totalExpense / totalIncome) * 100, 100)}%` : '0%' }}
+                    className="bg-destructive h-full rounded-full" 
+                  />
                 </div>
               </div>
-              <div className="pt-4 border-t border-white/5">
-                <p className="text-sm text-zinc-200">
-                  Bu ay harcayabileceğin <span className="text-white font-bold">{formatWithEquivalent(Math.max(remainingBudget, 0), 'TRY')}</span> daha var.
+              <div className="pt-6 border-t border-border">
+                <p className="text-sm text-muted-foreground font-medium">
+                  Bu ay harcayabileceğin <span className="text-foreground font-bold">{formatWithEquivalent(Math.max(remainingBudget, 0), 'TRY')}</span> daha var.
                 </p>
               </div>
             </div>
@@ -330,30 +343,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'quick_actions':
         return (
-          <div className="bg-zinc-900 border border-white/5 rounded-3xl p-6 relative group">
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-2 text-zinc-200">
+          <div className="corporate-card p-8 relative group">
+            <div className="flex justify-between items-start mb-8">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <Plus className="w-5 h-5" />
-                <span className="font-medium">Hızlı İşlemler</span>
+                <span className="font-semibold uppercase tracking-wider text-xs">Hızlı İşlemler</span>
               </div>
-              <GripHorizontal className="w-5 h-5 text-zinc-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <button onClick={onAddIncome} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all gap-2">
-                <Plus className="w-6 h-6" />
-                <span className="text-xs font-bold">Gelir Ekle</span>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <button onClick={onAddIncome} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-emerald-500/5 text-emerald-500 border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all gap-3 group/btn">
+                <Plus className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wide">Gelir Ekle</span>
               </button>
-              <button onClick={onAkbilLoad} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white transition-all gap-2">
-                <Bus className="w-6 h-6" />
-                <span className="text-xs font-bold">Akbil Yükle</span>
+              <button onClick={onAkbilLoad} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-blue-500/5 text-blue-500 border border-blue-500/10 hover:bg-blue-500 hover:text-white transition-all gap-3 group/btn">
+                <Bus className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wide">Akbil Yükle</span>
               </button>
-              <button onClick={onCryptoTransfer} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-orange-500/10 text-orange-500 hover:bg-orange-500 hover:text-white transition-all gap-2">
-                <ArrowRightLeft className="w-6 h-6" />
-                <span className="text-xs font-bold">Kripto Transfer</span>
+              <button onClick={onCryptoTransfer} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-orange-500/5 text-orange-500 border border-orange-500/10 hover:bg-orange-500 hover:text-white transition-all gap-3 group/btn">
+                <ArrowRightLeft className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wide">Kripto Transfer</span>
               </button>
-              <button onClick={onAddTransaction} className="flex flex-col items-center justify-center p-4 rounded-2xl bg-zinc-800 text-zinc-100 hover:bg-zinc-700 transition-all gap-2">
-                <ArrowUpRight className="w-6 h-6" />
-                <span className="text-xs font-bold">Gider Ekle</span>
+              <button onClick={onAddTransaction} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-secondary text-foreground border border-border hover:bg-primary hover:text-primary-foreground transition-all gap-3 group/btn">
+                <ArrowUpRight className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-wide">Gider Ekle</span>
               </button>
             </div>
           </div>
@@ -365,57 +378,62 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-        <h1 className="text-2xl font-bold text-white">Ana Ekran</h1>
+    <div className="space-y-8 pb-12">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Finansal Durum</h1>
+          <p className="text-muted-foreground font-medium mt-1">Hane halkı varlık ve nakit akışı özeti</p>
+        </div>
         
-        {/* Member Filter */}
-        {members && Object.keys(members).length > 1 && (
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-            <button
-              onClick={() => setSelectedMemberId('all')}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
-                selectedMemberId === 'all'
-                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                  : 'bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border border-white/5'
-              }`}
-            >
-              Tüm Hane
-            </button>
-            {Object.entries(members).map(([id, member]) => (
+        <div className="flex items-center gap-4">
+          {/* Member Filter */}
+          {members && Object.keys(members).length > 1 && (
+            <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
               <button
-                key={id}
-                onClick={() => setSelectedMemberId(id)}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
-                  selectedMemberId === id
-                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                    : 'bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border border-white/5'
+                onClick={() => setSelectedMemberId('all')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                  selectedMemberId === 'all'
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <div className={`w-2 h-2 rounded-full ${member.type === 'child' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
-                {member.displayName}
+                Tümü
+              </button>
+              {Object.entries(members).map(([id, member]) => (
+                <button
+                  key={id}
+                  onClick={() => setSelectedMemberId(id)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 ${
+                    selectedMemberId === id
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <div className={`w-2 h-2 rounded-full ${member.type === 'child' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+                  {member.displayName}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
+            {layout.map(item => (
+              <button
+                key={`toggle-${item.id}`}
+                onClick={() => toggleModuleVisibility(item.id)}
+                className={`p-2 rounded-xl transition-all ${item.visible ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                title={`${item.id} modülünü ${item.visible ? 'gizle' : 'göster'}`}
+              >
+                {item.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </button>
             ))}
           </div>
-        )}
-
-        <div className="flex gap-2">
-          {layout.map(item => (
-            <button
-              key={`toggle-${item.id}`}
-              onClick={() => toggleModuleVisibility(item.id)}
-              className={`p-2 rounded-lg border transition-colors ${item.visible ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-zinc-900 border-zinc-800 text-zinc-300'}`}
-              title={`${item.id} modülünü ${item.visible ? 'gizle' : 'göster'}`}
-            >
-              {item.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            </button>
-          ))}
         </div>
       </div>
 
-      <Reorder.Group axis="y" values={layout} onReorder={setLayout} className="space-y-6">
+      <Reorder.Group axis="y" values={layout} onReorder={setLayout} className="space-y-8">
         {layout.filter(item => item.visible).map(item => (
-          <Reorder.Item key={item.id} value={item}>
+          <Reorder.Item key={item.id} value={item} className="focus:outline-none">
             {renderModule(item.id)}
           </Reorder.Item>
         ))}

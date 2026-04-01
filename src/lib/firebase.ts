@@ -1,11 +1,59 @@
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged,
+  browserPopupRedirectResolver
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  doc, 
+  collection, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit,
+  collectionGroup,
+  Timestamp,
+  arrayUnion,
+  addDoc
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const storage = getStorage(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
+
+export {
+  doc,
+  collection,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
+  collectionGroup,
+  Timestamp,
+  arrayUnion,
+  addDoc,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  browserPopupRedirectResolver
+};

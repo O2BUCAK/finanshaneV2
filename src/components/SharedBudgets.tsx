@@ -1,13 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Users, Receipt, ArrowRight, Check, X, Trash2, Calculator, ChevronRight, ArrowLeft, AlertCircle, ArrowRightLeft, Share2, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Timestamp, orderBy, collectionGroup, query, where, getDocs, doc, updateDoc, arrayUnion, onSnapshot } from 'firebase/firestore';
 import { SharedBudget, SharedBudgetParticipant, SharedBudgetExpense, UserProfile } from '../types';
 import { useCollection } from '../hooks/useFirestore';
-import { db, auth } from '../lib/firebase';
+import { localDB } from '../db';
 import { formatAmount, parseAmount, cleanAmountInput } from '../utils/formatters';
 import { createSharedBudget, updateSharedBudget, deleteSharedBudget } from '../lib/sharedBudgets';
 import { useAuth } from '../hooks/useAuth';
+import { 
+  db, 
+  query, 
+  collectionGroup, 
+  where, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  arrayUnion 
+} from '../lib/firebase';
 
 interface SharedBudgetsProps {
   householdId?: string;
@@ -17,8 +26,7 @@ interface SharedBudgetsProps {
 export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showNotification }) => {
   const { profile } = useAuth();
   const { data: householdBudgets, loading: householdLoading } = useCollection<SharedBudget>(
-    householdId ? `households/${householdId}/sharedBudgets` : '',
-    [orderBy('createdAt', 'desc')]
+    householdId ? `households/${householdId}/sharedBudgets` : ''
   );
 
   const notify = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -39,22 +47,22 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
       return;
     }
 
-    setJoinedLoading(true);
-    const q = query(
-      collectionGroup(db, 'sharedBudgets'),
-      where('id', 'in', profile.joinedBudgetIds)
-    );
-    
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const budgets = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SharedBudget));
-      setJoinedBudgets(budgets);
-      setJoinedLoading(false);
-    }, (error) => {
-      console.error("Error fetching joined budgets:", error);
-      setJoinedLoading(false);
-    });
+    const fetchJoined = async () => {
+      setJoinedLoading(true);
+      try {
+        const budgets = await localDB.sharedBudgets
+          .where('id')
+          .anyOf(profile.joinedBudgetIds)
+          .toArray();
+        setJoinedBudgets(budgets as SharedBudget[]);
+      } catch (error) {
+        console.error('Error fetching joined budgets:', error);
+      } finally {
+        setJoinedLoading(false);
+      }
+    };
 
-    return () => unsubscribe();
+    fetchJoined();
   }, [profile?.joinedBudgetIds]);
 
   const budgets = useMemo(() => {
@@ -64,7 +72,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
         all.push(jb);
       }
     });
-    return all.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+    return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [householdBudgets, joinedBudgets]);
 
   const loading = householdLoading || joinedLoading;
@@ -192,7 +200,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
     try {
       const newBudget = await createSharedBudget(householdId, {
         name: newBudgetName,
-        date: Timestamp.now(),
+        date: new Date(),
         participants: [],
         expenses: [],
         isSettled: false,
@@ -252,7 +260,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
       amount,
       paidBy: expensePayer,
       splitType: expenseSplitType,
-      date: Timestamp.now(),
+      date: new Date(),
       ...(expenseSplitType === 'exact' ? { exactAmounts } : {}),
       ...(expenseParticipants.length > 0 ? { participantIds: expenseParticipants } : {})
     };
@@ -453,7 +461,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
                   </div>
                 </div>
               )}
-              <p className="text-zinc-300">{selectedBudget.date.toDate().toLocaleDateString('tr-TR')}</p>
+              <p className="text-zinc-300">{selectedBudget.date ? new Date(selectedBudget.date).toLocaleDateString('tr-TR') : '-'}</p>
             </div>
           </div>
           <button 
@@ -964,7 +972,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
                 </div>
               </div>
               <h4 className="text-xl font-bold mb-1">{budget.name}</h4>
-              <p className="text-zinc-400 text-sm mb-4">{budget.date.toDate().toLocaleDateString('tr-TR')}</p>
+              <p className="text-zinc-400 text-sm mb-4">{budget.date ? new Date(budget.date).toLocaleDateString('tr-TR') : '-'}</p>
               
               <div className="flex items-center gap-4 text-sm text-zinc-300">
                 <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {budget.participants.length} Kişi</span>

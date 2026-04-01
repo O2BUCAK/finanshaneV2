@@ -2,7 +2,7 @@
  * Formats a numeric string or number into a Turkish-style currency format with thousand separators.
  * Example: 1000000 -> 1.000.000
  */
-export const formatAmount = (value: string | number): string => {
+export const formatAmount = (value: string | number, maxDecimals: number = 8): string => {
   if (value === undefined || value === null || value === '') return '';
   
   // Convert to string and replace . with , for Turkish format
@@ -15,9 +15,9 @@ export const formatAmount = (value: string | number): string => {
   // Add thousand separators to the integer part
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   
-  // Limit decimal part to 2 digits
+  // Limit decimal part
   if (parts[1]) {
-    parts[1] = parts[1].slice(0, 2);
+    parts[1] = parts[1].slice(0, maxDecimals);
   }
   
   return parts.join(',');

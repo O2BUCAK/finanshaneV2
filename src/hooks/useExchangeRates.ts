@@ -7,10 +7,15 @@ interface ExchangeRates {
   [key: string]: number;
 }
 
-export const useExchangeRates = () => {
+export const useExchangeRates = (isPrivacyMode: boolean = false) => {
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const maskValue = (value: string) => {
+    if (!isPrivacyMode) return value;
+    return '••••••';
+  };
 
   useEffect(() => {
     const fetchRates = async () => {
@@ -57,9 +62,12 @@ export const useExchangeRates = () => {
   };
 
   const formatWithEquivalent = (amount: number, currency: string) => {
+    if (isPrivacyMode) return '••••••';
+
     const formattedOriginal = new Intl.NumberFormat('tr-TR', { 
       style: 'currency', 
-      currency: currency 
+      currency: currency,
+      maximumFractionDigits: amount < 1 && amount !== 0 ? 8 : 2
     }).format(amount);
 
     if (currency === 'TRY' || !rates) {

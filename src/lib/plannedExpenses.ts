@@ -1,50 +1,40 @@
-import { 
-  collection, 
-  doc, 
-  setDoc,
-  deleteDoc,
-  updateDoc,
-  Timestamp
-} from 'firebase/firestore';
-import { db } from './firebase';
+import { localDB } from '../db';
 import { PlannedExpense } from '../types';
-import { handleFirestoreError, OperationType } from './error-handler';
 
 export async function createPlannedExpense(householdId: string, expenseData: Omit<PlannedExpense, 'id' | 'createdAt'>) {
   try {
-    const expenseRef = doc(collection(db, `households/${householdId}/plannedExpenses`));
-    const now = Timestamp.now();
+    const id = `pe-${Date.now()}`;
+    const now = new Date();
     
     const newExpense = {
       ...expenseData,
-      id: expenseRef.id,
+      id,
+      householdId,
       createdAt: now,
-    };
+    } as PlannedExpense;
 
-    await setDoc(expenseRef, newExpense);
+    await localDB.plannedExpenses.add(newExpense);
     return newExpense;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `households/${householdId}/plannedExpenses`);
+    console.error('Error creating planned expense:', error);
     throw error;
   }
 }
 
 export async function updatePlannedExpense(householdId: string, expenseId: string, updates: Partial<PlannedExpense>) {
   try {
-    const expenseRef = doc(db, `households/${householdId}/plannedExpenses/${expenseId}`);
-    await updateDoc(expenseRef, updates);
+    await localDB.plannedExpenses.update(expenseId, updates);
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `households/${householdId}/plannedExpenses/${expenseId}`);
+    console.error('Error updating planned expense:', error);
     throw error;
   }
 }
 
 export async function deletePlannedExpense(householdId: string, expenseId: string) {
   try {
-    const expenseRef = doc(db, `households/${householdId}/plannedExpenses/${expenseId}`);
-    await deleteDoc(expenseRef);
+    await localDB.plannedExpenses.delete(expenseId);
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `households/${householdId}/plannedExpenses/${expenseId}`);
+    console.error('Error deleting planned expense:', error);
     throw error;
   }
 }

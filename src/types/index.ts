@@ -1,5 +1,3 @@
-import { Timestamp } from 'firebase/firestore';
-
 export type AccountType = 'asset' | 'liability' | 'income' | 'expense';
 
 export type AccountBranch = 'banking' | 'crypto' | 'social_gift';
@@ -22,10 +20,10 @@ export interface IncomeSource {
   periodDay?: number; // For fixed/variable
   isArchived?: boolean;
   revisions?: {
-    date: Timestamp;
+    date: Date;
     amount: number;
   }[];
-  createdAt: Timestamp;
+  createdAt: Date;
 }
 
 export interface ExpectedIncome {
@@ -35,13 +33,13 @@ export interface ExpectedIncome {
   sourceName: string;
   amount: number;
   currency: string;
-  expectedDate: Timestamp;
+  expectedDate: Date;
   status: 'pending' | 'realized' | 'cancelled';
   targetAccountId: string;
   transactionId?: string;
   isRetroactive?: boolean;
   parentSourceId?: string; // For retroactive differences linked to a source
-  createdAt: Timestamp;
+  createdAt: Date;
 }
 
 export interface PlannedExpense {
@@ -50,11 +48,11 @@ export interface PlannedExpense {
   title: string;
   amount: number;
   currency: string;
-  dueDate: Timestamp;
+  dueDate: Date;
   status: 'pending' | 'paid';
   categoryId: string;
   sourceAccountId?: string;
-  createdAt: Timestamp;
+  createdAt: Date;
 }
 
 export interface UserProfile {
@@ -67,8 +65,8 @@ export interface UserProfile {
   role?: 'adult' | 'child' | 'elderly' | 'other'; // Updated to include elderly and adult
   isAdmin?: boolean;
   kvkkAccepted?: boolean;
-  kvkkAcceptedAt?: Timestamp;
-  createdAt: Timestamp;
+  kvkkAcceptedAt?: Date;
+  createdAt: Date;
 }
 
 export interface Household {
@@ -84,7 +82,7 @@ export interface Household {
     displayName: string;
     email: string;
   }>;
-  createdAt: Timestamp;
+  createdAt: Date;
 }
 
 export interface Account {
@@ -120,7 +118,7 @@ export interface Account {
     name: string;
     amount: number;
   }[];
-  createdAt: Timestamp;
+  createdAt: Date;
 }
 
 export interface Transaction {
@@ -128,7 +126,7 @@ export interface Transaction {
   description: string;
   amount: number;
   currency: string;
-  date: Timestamp;
+  date: Date;
   debitAccountId: string;
   creditAccountId: string;
   categoryId: string;
@@ -139,8 +137,8 @@ export interface Transaction {
   installmentCount?: number;
   installmentNumber?: number;
   parentTransactionId?: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface SharedBudgetParticipant {
@@ -160,18 +158,18 @@ export interface SharedBudgetExpense {
   splitType: 'equal' | 'by_weight' | 'exact';
   exactAmounts?: Record<string, number>;
   participantIds?: string[]; // The participants who share this expense
-  date: Timestamp;
+  date: Date;
 }
 
 export interface SharedBudget {
   id: string;
   name: string;
   joinCode?: string;
-  date: Timestamp;
+  date: Date;
   participants: SharedBudgetParticipant[];
   expenses: SharedBudgetExpense[];
   isSettled: boolean;
-  createdAt: Timestamp;
+  createdAt: Date;
 }
 
 export interface Category {
@@ -181,5 +179,5 @@ export interface Category {
   icon?: string;
   color?: string;
   isSystem?: boolean;
-  createdAt: Timestamp;
+  createdAt: Date;
 }

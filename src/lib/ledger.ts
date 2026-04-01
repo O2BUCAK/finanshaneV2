@@ -1,59 +1,52 @@
-import { 
-  collection, 
-  doc, 
-  runTransaction, 
-  Timestamp, 
-  setDoc,
-} from 'firebase/firestore';
-import { db } from './firebase';
+import { localDB } from '../db';
 import { Transaction, Account } from '../types';
-import { handleFirestoreError, OperationType } from './error-handler';
 
 export async function createLedgerTransaction(
   householdId: string,
   txData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>
 ) {
   try {
-    return await runTransaction(db, async (transaction) => {
-      const debitAccountRef = doc(db, `households/${householdId}/accounts/${txData.debitAccountId}`);
-      const creditAccountRef = doc(db, `households/${householdId}/accounts/${txData.creditAccountId}`);
+    return await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
+      const debitAccount = await localDB.accounts.get(txData.debitAccountId);
+      const creditAccount = await localDB.accounts.get(txData.creditAccountId);
       
-      const debitAccount = await transaction.get(debitAccountRef);
-      const creditAccount = await transaction.get(creditAccountRef);
-      
-      if (!debitAccount.exists() || !creditAccount.exists()) {
+      if (!debitAccount || !creditAccount) {
         throw new Error('Hesap bulunamadı');
       }
       
-      const txRef = doc(collection(db, `households/${householdId}/transactions`));
-      const now = Timestamp.now();
+      const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `tx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const now = new Date();
       
-      transaction.set(txRef, {
+      const newTx: Transaction = {
         ...txData,
+        id,
         createdAt: now,
         updatedAt: now
-      });
+      };
       
-      const updateBalance = (account: any, amount: number, isDebit: boolean) => {
-        const type = account.data().type;
+      await localDB.transactions.add(newTx);
+      
+      const updateBalance = (account: Account, amount: number, isDebit: boolean) => {
+        const type = account.type;
         const multiplier = (type === 'asset' || type === 'expense') 
           ? (isDebit ? 1 : -1) 
           : (isDebit ? -1 : 1);
-        return account.data().balance + (amount * multiplier);
+        return account.balance + (amount * multiplier);
       };
 
-      transaction.update(debitAccountRef, {
+      await localDB.accounts.update(txData.debitAccountId, {
         balance: updateBalance(debitAccount, txData.amount, true)
       });
       
-      transaction.update(creditAccountRef, {
+      await localDB.accounts.update(txData.creditAccountId, {
         balance: updateBalance(creditAccount, txData.amount, false)
       });
       
-      return txRef.id;
+      return id;
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `households/${householdId}/transactions`);
+    console.error('Ledger transaction error:', error);
+    throw error;
   }
 }
 
@@ -63,75 +56,65 @@ export async function createInstallmentTransactions(
   installmentCount: number
 ) {
   try {
-    return await runTransaction(db, async (transaction) => {
-      const debitAccountRef = doc(db, `households/${householdId}/accounts/${txData.debitAccountId}`);
-      const creditAccountRef = doc(db, `households/${householdId}/accounts/${txData.creditAccountId}`);
+    return await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
+      const debitAccount = await localDB.accounts.get(txData.debitAccountId);
+      const creditAccount = await localDB.accounts.get(txData.creditAccountId);
       
-      const debitAccount = await transaction.get(debitAccountRef);
-      const creditAccount = await transaction.get(creditAccountRef);
-      
-      if (!debitAccount.exists() || !creditAccount.exists()) {
+      if (!debitAccount || !creditAccount) {
         throw new Error('Hesap bulunamadı');
       }
 
-      const parentTxRef = doc(collection(db, `households/${householdId}/transactions`));
-      const now = Timestamp.now();
-      const baseDate = txData.date.toDate();
+      const parentId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `ptx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const now = new Date();
+      const baseDate = new Date(txData.date);
       
-      // We only update the balance for the FIRST installment now
-      // Future installments will be "realized" when their date comes? 
-      // Actually, for simplicity and to match the user's "budget" request, 
-      // let's just create them all. 
-      // If we want them to affect balance, we update balance for each.
-      // But usually, only the first one affects the current balance.
-      
-      const updateBalance = (account: any, amount: number, isDebit: boolean) => {
-        const type = account.data().type;
+      const updateBalance = (account: Account, amount: number, isDebit: boolean) => {
+        const type = account.type;
         const multiplier = (type === 'asset' || type === 'expense') 
           ? (isDebit ? 1 : -1) 
           : (isDebit ? -1 : 1);
-        return account.data().balance + (amount * multiplier);
+        return account.balance + (amount * multiplier);
       };
 
-      let currentDebitBalance = debitAccount.data().balance;
-      let currentCreditBalance = creditAccount.data().balance;
+      let currentDebitBalance = debitAccount.balance;
+      let currentCreditBalance = creditAccount.balance;
 
       for (let i = 1; i <= installmentCount; i++) {
-        const txRef = i === 1 ? parentTxRef : doc(collection(db, `households/${householdId}/transactions`));
+        const id = i === 1 ? parentId : (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `itx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
         const installmentDate = new Date(baseDate);
         installmentDate.setMonth(baseDate.getMonth() + (i - 1));
         
         const installmentAmount = txData.amount / installmentCount;
         
-        transaction.set(txRef, {
+        const newTx: Transaction = {
           ...txData,
+          id,
           amount: installmentAmount,
-          date: Timestamp.fromDate(installmentDate),
+          date: installmentDate,
           isInstallment: true,
           installmentCount,
           installmentNumber: i,
-          parentTransactionId: parentTxRef.id,
+          parentTransactionId: parentId,
           createdAt: now,
           updatedAt: now
-        });
+        };
 
-        // Update balance only for the first installment if it's today or in the past
-        // Or should we update for all? 
-        // If it's a credit card, the debt is usually added as installments hit the statement.
-        // Let's only update balance for installments whose date is <= now
-        if (installmentDate <= now.toDate()) {
-          currentDebitBalance = updateBalance({ data: () => ({ ...debitAccount.data(), balance: currentDebitBalance }) }, installmentAmount, true);
-          currentCreditBalance = updateBalance({ data: () => ({ ...creditAccount.data(), balance: currentCreditBalance }) }, installmentAmount, false);
+        await localDB.transactions.add(newTx);
+
+        if (installmentDate <= now) {
+          currentDebitBalance = updateBalance({ ...debitAccount, balance: currentDebitBalance }, installmentAmount, true);
+          currentCreditBalance = updateBalance({ ...creditAccount, balance: currentCreditBalance }, installmentAmount, false);
         }
       }
 
-      transaction.update(debitAccountRef, { balance: currentDebitBalance });
-      transaction.update(creditAccountRef, { balance: currentCreditBalance });
+      await localDB.accounts.update(txData.debitAccountId, { balance: currentDebitBalance });
+      await localDB.accounts.update(txData.creditAccountId, { balance: currentCreditBalance });
       
-      return parentTxRef.id;
+      return parentId;
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `households/${householdId}/transactions`);
+    console.error('Installment transaction error:', error);
+    throw error;
   }
 }
 
@@ -140,43 +123,38 @@ export async function deleteLedgerTransaction(
   transactionId: string
 ) {
   try {
-    return await runTransaction(db, async (transaction) => {
-      const txRef = doc(db, `households/${householdId}/transactions/${transactionId}`);
-      const txSnap = await transaction.get(txRef);
+    return await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
+      const tx = await localDB.transactions.get(transactionId);
+      if (!tx) throw new Error('İşlem bulunamadı');
       
-      if (!txSnap.exists()) throw new Error('İşlem bulunamadı');
+      const debitAccount = await localDB.accounts.get(tx.debitAccountId);
+      const creditAccount = await localDB.accounts.get(tx.creditAccountId);
       
-      const txData = txSnap.data() as Transaction;
-      const debitAccountRef = doc(db, `households/${householdId}/accounts/${txData.debitAccountId}`);
-      const creditAccountRef = doc(db, `households/${householdId}/accounts/${txData.creditAccountId}`);
-      
-      const debitAccount = await transaction.get(debitAccountRef);
-      const creditAccount = await transaction.get(creditAccountRef);
-      
-      const reverseBalance = (account: any, amount: number, isDebit: boolean) => {
-        const type = account.data().type;
+      const reverseBalance = (account: Account, amount: number, isDebit: boolean) => {
+        const type = account.type;
         const multiplier = (type === 'asset' || type === 'expense') 
           ? (isDebit ? -1 : 1) 
           : (isDebit ? 1 : -1);
-        return account.data().balance + (amount * multiplier);
+        return account.balance + (amount * multiplier);
       };
 
-      if (debitAccount.exists()) {
-        transaction.update(debitAccountRef, {
-          balance: reverseBalance(debitAccount, txData.amount, true)
+      if (debitAccount) {
+        await localDB.accounts.update(tx.debitAccountId, {
+          balance: reverseBalance(debitAccount, tx.amount, true)
         });
       }
       
-      if (creditAccount.exists()) {
-        transaction.update(creditAccountRef, {
-          balance: reverseBalance(creditAccount, txData.amount, false)
+      if (creditAccount) {
+        await localDB.accounts.update(tx.creditAccountId, {
+          balance: reverseBalance(creditAccount, tx.amount, false)
         });
       }
       
-      transaction.delete(txRef);
+      await localDB.transactions.delete(transactionId);
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `households/${householdId}/transactions/${transactionId}`);
+    console.error('Delete transaction error:', error);
+    throw error;
   }
 }
 
@@ -186,53 +164,51 @@ export async function updateLedgerTransaction(
   newTxData: Partial<Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>>
 ) {
   try {
-    return await runTransaction(db, async (transaction) => {
-      const txRef = doc(db, `households/${householdId}/transactions/${transactionId}`);
-      const txSnap = await transaction.get(txRef);
-      if (!txSnap.exists()) throw new Error('İşlem bulunamadı');
+    return await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
+      const oldTx = await localDB.transactions.get(transactionId);
+      if (!oldTx) throw new Error('İşlem bulunamadı');
       
-      const oldTx = txSnap.data() as Transaction;
       const mergedTx = { ...oldTx, ...newTxData };
       
-      const accountIds = new Set([
+      const accountIds = Array.from(new Set([
         oldTx.debitAccountId, 
         oldTx.creditAccountId, 
         mergedTx.debitAccountId, 
         mergedTx.creditAccountId
-      ]);
+      ]));
       
-      const accountRefs: Record<string, any> = {};
-      const accountSnaps: Record<string, any> = {};
+      const accounts: Record<string, Account> = {};
       const balances: Record<string, number> = {};
 
       for (const id of accountIds) {
-        accountRefs[id] = doc(db, `households/${householdId}/accounts/${id}`);
-        accountSnaps[id] = await transaction.get(accountRefs[id]);
-        if (!accountSnaps[id].exists()) throw new Error(`Hesap bulunamadı: ${id}`);
-        balances[id] = accountSnaps[id].data().balance;
+        const acc = await localDB.accounts.get(id);
+        if (!acc) throw new Error(`Hesap bulunamadı: ${id}`);
+        accounts[id] = acc;
+        balances[id] = acc.balance;
       }
 
       const getMultiplier = (type: string, isDebit: boolean) => {
         return (type === 'asset' || type === 'expense') ? (isDebit ? 1 : -1) : (isDebit ? -1 : 1);
       };
 
-      balances[oldTx.debitAccountId] -= oldTx.amount * getMultiplier(accountSnaps[oldTx.debitAccountId].data().type, true);
-      balances[oldTx.creditAccountId] -= oldTx.amount * getMultiplier(accountSnaps[oldTx.creditAccountId].data().type, false);
+      balances[oldTx.debitAccountId] -= oldTx.amount * getMultiplier(accounts[oldTx.debitAccountId].type, true);
+      balances[oldTx.creditAccountId] -= oldTx.amount * getMultiplier(accounts[oldTx.creditAccountId].type, false);
 
-      balances[mergedTx.debitAccountId] += mergedTx.amount * getMultiplier(accountSnaps[mergedTx.debitAccountId].data().type, true);
-      balances[mergedTx.creditAccountId] += mergedTx.amount * getMultiplier(accountSnaps[mergedTx.creditAccountId].data().type, false);
+      balances[mergedTx.debitAccountId] += mergedTx.amount * getMultiplier(accounts[mergedTx.debitAccountId].type, true);
+      balances[mergedTx.creditAccountId] += mergedTx.amount * getMultiplier(accounts[mergedTx.creditAccountId].type, false);
 
       for (const id of accountIds) {
-        transaction.update(accountRefs[id], { balance: balances[id] });
+        await localDB.accounts.update(id, { balance: balances[id] });
       }
 
-      transaction.update(txRef, {
+      await localDB.transactions.update(transactionId, {
         ...newTxData,
-        updatedAt: Timestamp.now()
+        updatedAt: new Date()
       });
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `households/${householdId}/transactions/${transactionId}`);
+    console.error('Update transaction error:', error);
+    throw error;
   }
 }
 
@@ -242,9 +218,9 @@ export async function updateAccount(
   data: Partial<Account>
 ) {
   try {
-    const accRef = doc(db, `households/${householdId}/accounts/${accountId}`);
-    await setDoc(accRef, { ...data, updatedAt: Timestamp.now() }, { merge: true });
+    await localDB.accounts.update(accountId, { ...data });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `households/${householdId}/accounts/${accountId}`);
+    console.error('Update account error:', error);
+    throw error;
   }
 }

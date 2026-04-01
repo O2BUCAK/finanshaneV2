@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Plus, Trash2, Shield, User as UserIcon, Baby, MoreVertical, Mail, Check, X, ArrowRightLeft, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { localDB } from '../db';
 import { Household } from '../types';
 
 interface HouseholdMembersProps {
@@ -35,8 +34,6 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
     
     setLoading(true);
     try {
-      const householdRef = doc(db, 'households', household.id);
-      
       const updatedMembers = { ...household.members };
       const virtualMember = updatedMembers[selectedVirtualMemberId];
       const realMember = updatedMembers[selectedRealMemberId];
@@ -49,7 +46,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       
       delete updatedMembers[selectedVirtualMemberId];
       
-      await updateDoc(householdRef, { members: updatedMembers });
+      await localDB.households.update(household.id, { members: updatedMembers });
       
       setIsMergeModalOpen(false);
       setSelectedRealMemberId(null);
@@ -69,7 +66,6 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
 
     setLoading(true);
     try {
-      const householdRef = doc(db, 'households', household.id);
       const virtualId = `virtual-${Date.now()}`;
       
       const updatedMembers = {
@@ -83,7 +79,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
         }
       };
 
-      await updateDoc(householdRef, { members: updatedMembers });
+      await localDB.households.update(household.id, { members: updatedMembers as any });
       setIsAddModalOpen(false);
       setNewMemberName('');
       setNewMemberEmail('');
@@ -100,10 +96,9 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
     if (!window.confirm('Bu üyeyi haneden çıkarmak istediğinize emin misiniz?')) return;
 
     try {
-      const householdRef = doc(db, 'households', household.id);
       const updatedMembers = { ...household.members };
       delete updatedMembers[memberId];
-      await updateDoc(householdRef, { members: updatedMembers });
+      await localDB.households.update(household.id, { members: updatedMembers });
     } catch (error) {
       console.error('Error removing member:', error);
     }
@@ -113,7 +108,6 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
     if (!isOwner && memberId !== currentUserId) return;
 
     try {
-      const householdRef = doc(db, 'households', household.id);
       const updatedMembers = {
         ...household.members,
         [memberId]: {
@@ -121,7 +115,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
           salaryVisible: !household.members[memberId].salaryVisible
         }
       };
-      await updateDoc(householdRef, { members: updatedMembers });
+      await localDB.households.update(household.id, { members: updatedMembers });
     } catch (error) {
       console.error('Error toggling salary visibility:', error);
     }
@@ -130,10 +124,14 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
   const handleChangeMemberType = async (memberId: string, newType: 'adult' | 'child' | 'elderly' | 'other') => {
     if (!isOwner) return;
     try {
-      const householdRef = doc(db, 'households', household.id);
-      await updateDoc(householdRef, {
-        [`members.${memberId}.type`]: newType
-      });
+      const updatedMembers = {
+        ...household.members,
+        [memberId]: {
+          ...household.members[memberId],
+          type: newType
+        }
+      };
+      await localDB.households.update(household.id, { members: updatedMembers });
     } catch (error) {
       console.error('Error changing member type:', error);
     }
@@ -141,29 +139,29 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold flex items-center gap-2">
-          <Users className="w-6 h-6 text-emerald-500" />
+      <div className="flex items-center justify-between bg-card/50 p-6 rounded-3xl border border-border">
+        <h3 className="text-xl font-bold flex items-center gap-2 text-foreground">
+          <Users className="w-6 h-6 text-primary" />
           Hane Bireyleri
         </h3>
         <div className="flex items-center gap-3">
           {isOwner && household.joinCode && (
-            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl">
-              <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-wider">Katılım Kodu:</span>
-              <span className="text-sm font-mono font-bold text-emerald-500">{household.joinCode}</span>
+            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-xl">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Katılım Kodu:</span>
+              <span className="text-sm font-mono font-bold text-primary">{household.joinCode}</span>
               <button 
                 onClick={handleCopyCode}
-                className="p-1 hover:bg-zinc-800 rounded transition-colors"
+                className="p-1 hover:bg-muted rounded transition-colors"
                 title="Kodu Kopyala"
               >
-                <Check className="w-3 h-3 text-zinc-300" />
+                <Check className="w-3 h-3 text-muted-foreground" />
               </button>
             </div>
           )}
           {isOwner && (
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-all text-sm shadow-lg shadow-primary/20"
             >
               <Plus className="w-4 h-4" />
               Birey Ekle
@@ -173,21 +171,21 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       </div>
 
       {isOwner && household.joinCode && (
-        <div className="md:hidden p-4 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-between">
-          <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Katılım Kodu</span>
-          <span className="text-lg font-mono font-bold text-emerald-500 tracking-widest">{household.joinCode}</span>
+        <div className="md:hidden p-4 bg-card border border-border rounded-2xl flex items-center justify-between">
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Katılım Kodu</span>
+          <span className="text-lg font-mono font-bold text-primary tracking-widest">{household.joinCode}</span>
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Object.entries(household.members).map(([id, member]) => (
-          <div key={id} className="bg-zinc-950 border border-zinc-800 p-5 rounded-3xl flex items-center justify-between group">
+          <div key={id} className="bg-card border border-border p-5 rounded-3xl flex items-center justify-between group hover:shadow-md transition-all">
             <div className="flex items-center gap-4">
               <div className={`p-3 rounded-2xl ${
                 member.type === 'adult' ? 'bg-blue-500/10 text-blue-500' :
                 member.type === 'child' ? 'bg-purple-500/10 text-purple-500' :
-                member.type === 'elderly' ? 'bg-rose-500/10 text-rose-500' :
-                'bg-zinc-500/10 text-zinc-500'
+                member.type === 'elderly' ? 'bg-destructive/10 text-destructive' :
+                'bg-muted text-muted-foreground'
               }`}>
                 {member.type === 'adult' ? <Shield className="w-6 h-6" /> :
                  member.type === 'child' ? <Baby className="w-6 h-6" /> :
@@ -196,17 +194,17 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-white">{member.displayName}</h4>
+                  <h4 className="font-bold text-foreground">{member.displayName}</h4>
                   {id === household.ownerId && (
-                    <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold uppercase">Hane Sahibi</span>
+                    <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase">Hane Sahibi</span>
                   )}
                 </div>
-                <p className="text-xs text-zinc-300">{member.email || 'E-posta yok'}</p>
+                <p className="text-xs text-muted-foreground">{member.email || 'E-posta yok'}</p>
                 {isOwner && id !== household.ownerId ? (
                   <select
                     value={member.type}
                     onChange={(e) => handleChangeMemberType(id, e.target.value as any)}
-                    className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300 mt-1 uppercase font-bold tracking-wider rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
+                    className="text-[10px] bg-background border border-border text-muted-foreground mt-1 uppercase font-bold tracking-wider rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/20"
                   >
                     <option value="adult">Yetişkin</option>
                     <option value="child">Çocuk</option>
@@ -214,7 +212,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
                     <option value="other">Diğer</option>
                   </select>
                 ) : (
-                  <p className="text-[10px] text-zinc-300 mt-1 uppercase font-bold tracking-wider">
+                  <p className="text-[10px] text-muted-foreground mt-1 uppercase font-bold tracking-wider">
                     {member.type === 'adult' ? 'Yetişkin' : member.type === 'child' ? 'Çocuk' : member.type === 'elderly' ? 'Yaşlı' : 'Diğer'}
                   </p>
                 )}
@@ -228,7 +226,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
                     setSelectedVirtualMemberId(id);
                     setIsMergeModalOpen(true);
                   }}
-                  className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-colors"
+                  className="p-2 text-primary hover:bg-primary/10 rounded-xl transition-colors"
                   title="Gerçek Kullanıcı ile Eşleştir"
                 >
                   <ArrowRightLeft className="w-5 h-5" />
@@ -237,7 +235,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
               {isOwner && id !== currentUserId && (
                 <button
                   onClick={() => handleRemoveMember(id)}
-                  className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
+                  className="p-2 text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
                   title="Üyeyi Çıkar"
                 >
                   <Trash2 className="w-5 h-5" />
@@ -255,34 +253,34 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
+              className="bg-card border border-border w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
             >
-              <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold">Birey Eşleştir</h3>
-                <button onClick={() => setIsMergeModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-xl transition-colors">
-                  <X className="w-5 h-5 text-zinc-300" />
+              <div className="p-6 border-b border-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-foreground">Birey Eşleştir</h3>
+                <button onClick={() => setIsMergeModalOpen(false)} className="p-2 hover:bg-muted rounded-xl transition-colors">
+                  <X className="w-5 h-5 text-muted-foreground" />
                 </button>
               </div>
               <div className="p-6 space-y-4">
-                <p className="text-sm text-zinc-200">
-                  "<span className="text-white font-bold">{household.members[selectedVirtualMemberId!]?.displayName}</span>" (Taslak) kaydını hangi gerçek kullanıcı ile eşleştirmek istersiniz?
+                <p className="text-sm text-foreground">
+                  "<span className="text-foreground font-bold">{household.members[selectedVirtualMemberId!]?.displayName}</span>" (Taslak) kaydını hangi gerçek kullanıcı ile eşleştirmek istersiniz?
                 </p>
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-zinc-300 uppercase tracking-wider">Gerçek Kullanıcı Seçin</label>
-                  <div className="grid grid-cols-1 gap-2">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Gerçek Kullanıcı Seçin</label>
+                  <div className="space-y-2">
                     {Object.entries(household.members)
                       .filter(([mid]) => !mid.startsWith('virtual-') && mid !== household.ownerId)
                       .map(([mid, m]) => (
                         <button
                           key={mid}
                           onClick={() => setSelectedRealMemberId(mid)}
-                          className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${
+                          className={`flex items-center gap-3 p-4 rounded-2xl border transition-all w-full ${
                             selectedRealMemberId === mid 
-                              ? 'bg-emerald-500/10 border-emerald-500 text-white' 
-                              : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                              ? 'bg-primary/10 border-primary text-foreground' 
+                              : 'bg-background border-border text-muted-foreground hover:border-muted-foreground'
                           }`}
                         >
-                          <div className="w-8 h-8 bg-zinc-800 rounded-lg flex items-center justify-center">
+                          <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center">
                             <UserIcon className="w-4 h-4" />
                           </div>
                           <div className="text-left">
@@ -296,7 +294,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
                 <button
                   onClick={handleMergeMembers}
                   disabled={!selectedRealMemberId || loading}
-                  className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-800 disabled:text-zinc-400 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 mt-4"
+                  className="w-full bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground text-primary-foreground font-bold py-4 rounded-2xl transition-all shadow-lg shadow-primary/20 mt-4"
                 >
                   {loading ? 'Eşleştiriliyor...' : 'Eşleştirmeyi Tamamla'}
                 </button>
@@ -313,38 +311,38 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
+              className="bg-card border border-border w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
             >
-              <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold">Yeni Birey Ekle</h3>
-                <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-zinc-800 rounded-xl transition-colors">
-                  <X className="w-5 h-5 text-zinc-300" />
+              <div className="p-6 border-b border-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-foreground">Yeni Birey Ekle</h3>
+                <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-muted rounded-xl transition-all">
+                  <X className="w-5 h-5 text-muted-foreground" />
                 </button>
               </div>
               <form onSubmit={handleAddMember} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-zinc-300 uppercase tracking-wider">Ad Soyad</label>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ad Soyad</label>
                   <input
                     type="text"
                     required
                     value={newMemberName}
                     onChange={(e) => setNewMemberName(e.target.value)}
                     placeholder="Örn: Ayşe Yılmaz"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
+                    className="w-full bg-background border border-border rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-zinc-300 uppercase tracking-wider">E-posta (Opsiyonel)</label>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">E-posta (Opsiyonel)</label>
                   <input
                     type="email"
                     value={newMemberEmail}
                     onChange={(e) => setNewMemberEmail(e.target.value)}
                     placeholder="Örn: ayse@example.com"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
+                    className="w-full bg-background border border-border rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-zinc-300 uppercase tracking-wider">Birey Tipi</label>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Birey Tipi</label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { id: 'adult', label: 'Yetişkin', icon: Shield },
@@ -358,8 +356,8 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
                         onClick={() => setNewMemberType(type.id as any)}
                         className={`flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all ${
                           newMemberType === type.id
-                            ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500'
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                            ? 'bg-primary/10 border-primary text-primary'
+                            : 'bg-background border-border text-muted-foreground hover:border-muted-foreground'
                         }`}
                       >
                         <type.icon className="w-5 h-5" />
@@ -371,7 +369,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 mt-4 disabled:opacity-50"
+                  className="w-full bg-primary text-primary-foreground font-bold py-4 rounded-2xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 mt-4 disabled:opacity-50"
                 >
                   {loading ? 'Ekleniyor...' : 'Bireyi Ekle'}
                 </button>

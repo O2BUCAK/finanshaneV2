@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Calendar, Target, Trash2, Check, X, AlertCircle, TrendingDown, Tag, Wallet, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Timestamp, orderBy } from 'firebase/firestore';
 import { PlannedExpense, Category, Account } from '../types';
 import { useCollection } from '../hooks/useFirestore';
 import { createPlannedExpense, updatePlannedExpense, deletePlannedExpense } from '../lib/plannedExpenses';
@@ -13,15 +12,15 @@ interface PlannedExpensesProps {
   categories: Account[];
   accounts: Account[];
   members?: Record<string, any>;
+  isPrivacyMode?: boolean;
 }
 
-export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, categories, accounts, members }) => {
+export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, categories, accounts, members, isPrivacyMode = false }) => {
   const { data: plannedExpenses, loading } = useCollection<PlannedExpense>(
-    householdId ? `households/${householdId}/plannedExpenses` : '',
-    [orderBy('dueDate', 'asc')]
+    householdId ? `households/${householdId}/plannedExpenses` : ''
   );
 
-  const { formatWithEquivalent, convertToTRY } = useExchangeRates();
+  const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<PlannedExpense | null>(null);
@@ -45,7 +44,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
       setOwnerId(expense.ownerId || '');
       setAmount(expense.amount.toString());
       setCurrency(expense.currency);
-      setDueDate(expense.dueDate.toDate().toISOString().split('T')[0]);
+      setDueDate(expense.dueDate.toISOString().split('T')[0]);
       setCategoryId(expense.categoryId);
       setSourceAccountId(expense.sourceAccountId || '');
     } else {
@@ -72,7 +71,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
         ownerId,
         amount: parseFloat(amount),
         currency,
-        dueDate: Timestamp.fromDate(new Date(dueDate)),
+        dueDate: new Date(dueDate),
         status: editingExpense ? editingExpense.status : 'pending' as const,
         categoryId,
         sourceAccountId: sourceAccountId || undefined,
@@ -132,15 +131,15 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
   const progress = totalPlanned > 0 ? (totalPaid / totalPlanned) * 100 : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-12">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Bütçe Planlama</h1>
-          <p className="text-zinc-100">Gelecek harcamalarınızı planlayın ve takip edin.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Bütçe Planlama</h1>
+          <p className="text-muted-foreground font-medium mt-1">Gelecek harcamalarınızı planlayın ve nakit akışınızı yönetin.</p>
         </div>
         <button 
           onClick={() => openModal()}
-          className="bg-emerald-500 text-white px-4 py-2 rounded-xl font-semibold hover:bg-emerald-600 transition-colors flex items-center gap-2"
+          className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
         >
           <Plus className="w-5 h-5" /> Yeni Plan
         </button>
@@ -148,83 +147,83 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-zinc-900 border border-white/5 p-6 rounded-3xl">
-          <div className="flex items-center gap-3 text-zinc-100 mb-2">
+        <div className="corporate-card p-6">
+          <div className="flex items-center gap-3 text-muted-foreground mb-3">
             <Target className="w-5 h-5" />
-            <span className="text-sm font-medium">Toplam Planlanan</span>
+            <span className="text-xs font-bold uppercase tracking-wider">Toplam Planlanan</span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className="text-3xl font-bold text-foreground">
             {formatWithEquivalent(totalPlanned, 'TRY')}
           </div>
         </div>
-        <div className="bg-zinc-900 border border-white/5 p-6 rounded-3xl">
-          <div className="flex items-center gap-3 text-zinc-100 mb-2">
+        <div className="corporate-card p-6">
+          <div className="flex items-center gap-3 text-muted-foreground mb-3">
             <Check className="w-5 h-5 text-emerald-500" />
-            <span className="text-sm font-medium">Ödenen</span>
+            <span className="text-xs font-bold uppercase tracking-wider">Ödenen</span>
           </div>
-          <div className="text-2xl font-bold text-emerald-500">
+          <div className="text-3xl font-bold text-emerald-500">
             {formatWithEquivalent(totalPaid, 'TRY')}
           </div>
         </div>
-        <div className="bg-zinc-900 border border-white/5 p-6 rounded-3xl">
-          <div className="flex items-center gap-3 text-zinc-100 mb-2">
-            <TrendingDown className="w-5 h-5 text-rose-500" />
-            <span className="text-sm font-medium">Kalan</span>
+        <div className="corporate-card p-6">
+          <div className="flex items-center gap-3 text-muted-foreground mb-3">
+            <TrendingDown className="w-5 h-5 text-destructive" />
+            <span className="text-xs font-bold uppercase tracking-wider">Kalan Ödeme</span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className="text-3xl font-bold text-foreground">
             {formatWithEquivalent(totalPlanned - totalPaid, 'TRY')}
           </div>
         </div>
       </div>
 
       {/* Progress Bar */}
-      <div className="bg-zinc-900 border border-white/5 p-6 rounded-3xl">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-medium text-zinc-100">Bütçe İlerlemesi</span>
-          <span className="text-sm font-bold text-white">%{progress.toFixed(1)}</span>
+      <div className="corporate-card p-8">
+        <div className="flex justify-between items-center mb-4">
+          <span className="text-sm font-bold text-foreground uppercase tracking-wide">Bütçe İlerlemesi</span>
+          <span className="text-sm font-bold text-primary">%{progress.toFixed(1)}</span>
         </div>
-        <div className="w-full bg-zinc-800 rounded-full h-3">
+        <div className="w-full bg-secondary rounded-full h-3 overflow-hidden">
           <motion.div 
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
-            className="bg-emerald-500 h-3 rounded-full"
+            className="bg-primary h-full rounded-full shadow-sm"
           />
         </div>
       </div>
 
       {/* Expenses List */}
-      <div className="bg-zinc-900 border border-white/5 rounded-3xl overflow-hidden">
+      <div className="corporate-card overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-zinc-300">Yükleniyor...</div>
+          <div className="p-12 text-center text-muted-foreground font-medium">Veriler yükleniyor...</div>
         ) : plannedExpenses.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-white/5">
-                  <th className="px-6 py-4 text-xs font-bold text-zinc-200 uppercase tracking-wider">Durum</th>
-                  <th className="px-6 py-4 text-xs font-bold text-zinc-200 uppercase tracking-wider">Harcamayı Yapan</th>
-                  <th className="px-6 py-4 text-xs font-bold text-zinc-200 uppercase tracking-wider">Başlık</th>
-                  <th className="px-6 py-4 text-xs font-bold text-zinc-200 uppercase tracking-wider">Kategori</th>
-                  <th className="px-6 py-4 text-xs font-bold text-zinc-200 uppercase tracking-wider">Vade</th>
-                  <th className="px-6 py-4 text-xs font-bold text-zinc-200 uppercase tracking-wider text-right">Miktar</th>
-                  <th className="px-6 py-4 text-xs font-bold text-zinc-200 uppercase tracking-wider text-right">İşlemler</th>
+                <tr className="border-b border-border bg-secondary/30">
+                  <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Durum</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Sorumlu</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Başlık</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kategori</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Vade</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Miktar</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">İşlemler</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-border">
                 {plannedExpenses.map(expense => {
                   const category = categories.find(c => c.id === expense.categoryId);
-                  const isOverdue = expense.status === 'pending' && expense.dueDate.toDate() < new Date();
+                  const isOverdue = expense.status === 'pending' && expense.dueDate < new Date();
                   const member = members?.[expense.ownerId];
                   
                   return (
-                    <tr key={expense.id} className="group hover:bg-white/[0.02] transition-colors">
+                    <tr key={expense.id} className="group hover:bg-secondary/50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button 
                           onClick={() => toggleStatus(expense)}
                           className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
                             expense.status === 'paid' 
                               ? 'bg-emerald-500 border-emerald-500 text-white' 
-                              : 'border-zinc-700 hover:border-emerald-500/50'
+                              : 'border-border hover:border-primary/50'
                           }`}
                         >
                           {expense.status === 'paid' && <Check className="w-4 h-4" />}
@@ -232,33 +231,33 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${member?.type === 'child' ? 'bg-blue-500/20 text-blue-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border border-border ${member?.type === 'child' ? 'bg-blue-500/10 text-blue-500' : 'bg-primary/10 text-primary'}`}>
                             {member?.displayName?.charAt(0) || '?'}
                           </div>
-                          <span className="text-sm text-zinc-100">{member?.displayName || 'Bilinmiyor'}</span>
+                          <span className="text-sm font-medium text-foreground">{member?.displayName || 'Bilinmiyor'}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-white">{expense.title}</div>
+                        <div className="text-sm font-bold text-foreground">{expense.title}</div>
                         {isOverdue && (
-                          <div className="flex items-center gap-1 text-[10px] text-rose-500 font-bold uppercase mt-1">
+                          <div className="flex items-center gap-1 text-[10px] text-destructive font-bold uppercase mt-1">
                             <AlertCircle className="w-3 h-3" /> Gecikti
                           </div>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: category?.color || '#52525b' }} />
-                          <span className="text-sm text-zinc-200">{category?.name || 'Kategorisiz'}</span>
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: category?.color || 'var(--muted-foreground)' }} />
+                          <span className="text-sm font-medium text-muted-foreground">{category?.name || 'Kategorisiz'}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-zinc-200">
-                          {expense.dueDate.toDate().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
+                        <div className="text-sm font-medium text-muted-foreground">
+                          {expense.dueDate ? new Date(expense.dueDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) : '-'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className={`text-sm font-bold ${expense.status === 'paid' ? 'text-zinc-200 line-through' : 'text-white'}`}>
+                        <div className={`text-sm font-bold ${expense.status === 'paid' ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                           {formatWithEquivalent(expense.amount, expense.currency)}
                         </div>
                       </td>
@@ -266,13 +265,13 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={() => openModal(expense)}
-                            className="p-2 hover:bg-white/5 rounded-xl text-zinc-100 hover:text-white transition-all"
+                            className="p-2 hover:bg-secondary rounded-xl text-muted-foreground hover:text-foreground transition-all"
                           >
                             <Settings className="w-4 h-4" />
                           </button>
                           <button 
                             onClick={() => handleDelete(expense.id)}
-                            className="p-2 hover:bg-rose-500/10 rounded-xl text-zinc-200 hover:text-rose-500 transition-all"
+                            className="p-2 hover:bg-destructive/10 rounded-xl text-muted-foreground hover:text-destructive transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -285,9 +284,12 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
             </table>
           </div>
         ) : (
-          <div className="p-12 text-center text-zinc-200">
-            <Target className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p>Henüz planlanmış bir harcama bulunmuyor.</p>
+          <div className="p-20 text-center">
+            <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
+              <Target className="w-8 h-8 text-muted-foreground/30" />
+            </div>
+            <p className="text-lg font-bold text-foreground mb-1">Harcama planı bulunmuyor</p>
+            <p className="text-sm text-muted-foreground font-medium">Henüz planlanmış bir harcama bulunmuyor.</p>
           </div>
         )}
       </div>
@@ -301,30 +303,30 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-zinc-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-lg bg-card border border-border rounded-3xl shadow-2xl overflow-hidden"
             >
-              <div className="p-6 border-b border-white/5 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-white">
+              <div className="p-6 border-b border-border flex justify-between items-center bg-secondary/30">
+                <h2 className="text-xl font-bold text-foreground">
                   {editingExpense ? 'Planı Düzenle' : 'Yeni Harcama Planı'}
                 </h2>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-zinc-200">
+                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-secondary rounded-xl text-muted-foreground">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} className="p-8 space-y-5">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Harcamayı Yapan</label>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Harcamayı Yapan</label>
                   <select 
                     value={ownerId}
                     onChange={(e) => setOwnerId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none"
+                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
                   >
                     {Object.entries(members || {}).map(([id, m]: [string, any]) => (
                       <option key={id} value={id}>{m.displayName}</option>
@@ -333,34 +335,34 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Harcama Başlığı</label>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Harcama Başlığı</label>
                   <input 
                     type="text"
                     required
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Örn: Kira, Elektrik Faturası..."
-                    className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Miktar</label>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Miktar</label>
                     <input 
                       type="text"
                       required
                       value={formatAmount(amount)}
                       onChange={(e) => setAmount(parseAmount(cleanAmountInput(e.target.value)))}
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-bold"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Para Birimi</label>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Para Birimi</label>
                     <select 
                       value={currency}
                       onChange={(e) => setCurrency(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none"
+                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-bold"
                     >
                       <option value="TRY">TRY (₺)</option>
                       <option value="USD">USD ($)</option>
@@ -371,22 +373,22 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Vade Tarihi</label>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Vade Tarihi</label>
                     <input 
                       type="date"
                       required
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Kategori</label>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kategori</label>
                     <select 
                       required
                       value={categoryId}
                       onChange={(e) => setCategoryId(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none"
+                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
                     >
                       {categories.filter(c => c.type === 'expense').map(cat => (
                         <option key={cat.id} value={cat.id}>{cat.name}</option>
@@ -396,11 +398,11 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Ödeme Hesabı (Opsiyonel)</label>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Ödeme Hesabı (Opsiyonel)</label>
                   <select 
                     value={sourceAccountId}
                     onChange={(e) => setSourceAccountId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-white/5 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none"
+                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
                   >
                     <option value="">Hesap Seçilmedi</option>
                     {accounts.map(acc => (
@@ -409,18 +411,18 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
                   </select>
                 </div>
 
-                <div className="pt-4 flex gap-3">
+                <div className="pt-6 flex gap-4">
                   <button 
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="flex-1 px-4 py-3 rounded-2xl bg-zinc-800 text-white font-bold hover:bg-zinc-700 transition-all"
+                    className="flex-1 px-6 py-3 rounded-xl bg-secondary text-foreground font-bold hover:bg-secondary/80 transition-all border border-border"
                   >
                     İptal
                   </button>
                   <button 
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-2 px-8 py-3 rounded-2xl bg-emerald-500 text-white font-bold hover:bg-emerald-600 transition-all disabled:opacity-50"
+                    className="flex-[2] px-8 py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
                   >
                     {isSubmitting ? 'Kaydediliyor...' : editingExpense ? 'Güncelle' : 'Planı Kaydet'}
                   </button>
@@ -439,29 +441,29 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsDeleteConfirmOpen(false)}
-              className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-sm bg-zinc-900 border border-white/10 rounded-3xl shadow-2xl p-6 text-center"
+              className="relative w-full max-w-sm bg-card border border-border rounded-3xl shadow-2xl p-8 text-center"
             >
-              <div className="w-16 h-16 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-destructive/10 text-destructive rounded-full flex items-center justify-center mx-auto mb-6">
                 <AlertCircle className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Planı Sil?</h3>
-              <p className="text-zinc-100 mb-6">Bu harcama planını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
-              <div className="flex gap-3">
+              <h3 className="text-xl font-bold text-foreground mb-2">Planı Sil?</h3>
+              <p className="text-muted-foreground font-medium mb-8">Bu harcama planını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
+              <div className="flex gap-4">
                 <button 
                   onClick={() => setIsDeleteConfirmOpen(false)}
-                  className="flex-1 px-4 py-3 rounded-2xl bg-zinc-800 text-white font-bold hover:bg-zinc-700 transition-all"
+                  className="flex-1 px-4 py-3 rounded-xl bg-secondary text-foreground font-bold hover:bg-secondary/80 transition-all border border-border"
                 >
                   İptal
                 </button>
                 <button 
                   onClick={confirmDelete}
-                  className="flex-1 px-4 py-3 rounded-2xl bg-rose-500 text-white font-bold hover:bg-rose-600 transition-all"
+                  className="flex-1 px-4 py-3 rounded-xl bg-destructive text-destructive-foreground font-bold hover:bg-destructive/90 transition-all shadow-lg shadow-destructive/20"
                 >
                   Evet, Sil
                 </button>

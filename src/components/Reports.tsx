@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { PieChart } from 'lucide-react';
 import { Account, Transaction, Category } from '../types';
 import { SankeyChart } from './SankeyChart';
 
@@ -35,7 +36,7 @@ export const Reports: React.FC<ReportsProps> = ({
     const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
 
     const filteredTxs = transactions.filter(tx => {
-      const txDate = tx.date.toDate();
+      const txDate = new Date(tx.date);
       if (period === 'currentMonth') {
         return txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
       } else if (period === 'lastMonth') {
@@ -126,35 +127,35 @@ export const Reports: React.FC<ReportsProps> = ({
   }, [transactions, accounts, period, convertToTRY]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-2xl font-bold">Paranın nereye aktığını görmeye artık hazırsın</h2>
-          <p className="text-zinc-100 mt-1">Gelir ve giderlerinizin görsel akışı</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Nakit Akış Analizi</h2>
+          <p className="text-muted-foreground font-medium mt-1">Gelir ve giderlerinizin görsel akış diyagramı</p>
         </div>
         
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
           {/* Member Filter */}
           {members && Object.keys(members).length > 1 && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+            <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
               <button
                 onClick={() => setSelectedMemberId('all')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
                   selectedMemberId === 'all'
-                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                    : 'bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border border-white/5'
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Tüm Hane
+                Tümü
               </button>
               {Object.entries(members).map(([id, member]) => (
                 <button
                   key={id}
                   onClick={() => setSelectedMemberId(id)}
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 ${
                     selectedMemberId === id
-                      ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                      : 'bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border border-white/5'
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                      : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   <div className={`w-2 h-2 rounded-full ${member.type === 'child' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
@@ -164,27 +165,27 @@ export const Reports: React.FC<ReportsProps> = ({
             </div>
           )}
 
-          <div className="flex bg-zinc-900 rounded-xl p-1 border border-zinc-800">
+          <div className="flex bg-secondary/50 p-1.5 rounded-2xl border border-border">
             <button
               onClick={() => setPeriod('currentMonth')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                period === 'currentMonth' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-100 hover:text-white'
+              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                period === 'currentMonth' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Bu Ay
             </button>
             <button
               onClick={() => setPeriod('lastMonth')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                period === 'lastMonth' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-100 hover:text-white'
+              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                period === 'lastMonth' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Geçen Ay
             </button>
             <button
               onClick={() => setPeriod('allTime')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                period === 'allTime' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-100 hover:text-white'
+              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                period === 'allTime' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Tümü
@@ -193,7 +194,7 @@ export const Reports: React.FC<ReportsProps> = ({
         </div>
       </div>
 
-      <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-3xl p-6 lg:p-12 min-h-[600px] flex items-center justify-center relative overflow-hidden">
+      <div className="corporate-card p-8 lg:p-12 min-h-[600px] flex items-center justify-center relative overflow-hidden">
         {sankeyData.nodes.length > 0 ? (
           <div className="w-full h-[500px]">
             <SankeyChart 
@@ -202,9 +203,12 @@ export const Reports: React.FC<ReportsProps> = ({
             />
           </div>
         ) : (
-          <div className="text-center text-zinc-100">
-            <p className="text-lg mb-2">Bu dönem için yeterli veri bulunmuyor.</p>
-            <p className="text-sm">Gelir ve gider işlemlerinizi ekledikçe grafik burada oluşacaktır.</p>
+          <div className="text-center">
+            <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
+              <PieChart className="w-8 h-8 text-muted-foreground/50" />
+            </div>
+            <p className="text-lg font-bold text-foreground mb-2">Yeterli veri bulunmuyor</p>
+            <p className="text-sm text-muted-foreground font-medium">Gelir ve gider işlemlerinizi ekledikçe grafik burada oluşacaktır.</p>
           </div>
         )}
       </div>
