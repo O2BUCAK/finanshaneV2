@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   TrendingUp, TrendingDown, Wallet, Building2, Bitcoin, Gift, 
   Calendar, ArrowUpRight, ArrowDownLeft, Plus, Bus, ArrowRightLeft,
-  GripHorizontal, Eye, EyeOff, PieChart, X
+  GripHorizontal, Eye, EyeOff, PieChart, X, CreditCard, Clock
 } from 'lucide-react';
 import { motion, Reorder } from 'framer-motion';
 import { Account, Transaction, IncomeSource, ExpectedIncome, PlannedExpense } from '../types';
@@ -230,10 +230,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (!isVisible) return null;
 
     const moduleHeader = (title: string, icon: React.ReactNode) => (
-      <div className="flex justify-between items-start mb-6 relative z-10">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          {icon}
-          <span className="font-semibold uppercase tracking-wider text-xs">{title}</span>
+      <div className="flex justify-between items-center mb-6 relative z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center border border-border/50 shadow-sm group-hover:scale-110 transition-transform duration-300">
+            {React.cloneElement(icon as React.ReactElement, { className: 'w-5 h-5 text-primary' })}
+          </div>
+          <div>
+            <h3 className="text-base font-black tracking-tight text-foreground">{title}</h3>
+            <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-60">Hane Ekonomi Modülü</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -241,26 +246,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
               e.stopPropagation();
               toggleLocalPrivacy(id);
             }}
-            className={`p-1.5 border border-border/50 rounded-lg transition-all ${
+            className={`p-2 border border-border/50 rounded-lg transition-all ${
               isItemHidden(id)
                 ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20'
-                : 'text-muted-foreground/50 hover:text-foreground hover:bg-zinc-800'
+                : 'text-muted-foreground/50 hover:text-foreground hover:bg-secondary'
             }`}
             title={isItemHidden(id) ? 'Göster' : 'Gizle'}
           >
-            {isItemHidden(id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            {isItemHidden(id) ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
           </button>
           <button 
             onClick={(e) => {
               e.stopPropagation();
               toggleModuleVisibility(id);
             }}
-            className="p-1.5 hover:bg-zinc-800 rounded-lg text-muted-foreground/50 hover:text-foreground transition-all"
+            className="p-2 hover:bg-secondary rounded-lg text-muted-foreground/50 hover:text-foreground transition-all border border-transparent hover:border-border/50"
             title="Kapat"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
-          <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+          <GripHorizontal className="w-4 h-4 text-muted-foreground/20 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
         </div>
       </div>
     );
@@ -269,18 +274,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'master_widget':
         return (
           <div className="corporate-card p-8 relative group overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-3xl" />
-            {moduleHeader('Toplam Varlık Özeti', <Wallet className="w-5 h-5" />)}
-            <div className="flex items-end gap-4 relative z-10">
-              <h2 className="text-5xl font-bold tracking-tight text-foreground">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-primary/5 rounded-full -mr-40 -mt-40 blur-3xl group-hover:bg-primary/10 transition-colors duration-500" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/5 rounded-full -ml-32 -mb-32 blur-3xl group-hover:bg-emerald-500/10 transition-colors duration-500" />
+            {moduleHeader('Toplam Varlık Özeti', <Wallet />)}
+            <div className="flex flex-col md:flex-row md:items-end gap-4 relative z-10">
+              <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-foreground leading-none">
                 {formatWithEquivalent(netWorth, 'TRY', isItemHidden('master_widget'))}
               </h2>
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-bold mb-1.5 ${netWorthChange >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
-                {netWorthChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black mb-1 ${netWorthChange >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
+                {netWorthChange >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
                 {Math.abs(netWorthChange).toFixed(1)}%
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-3 font-medium">Geçen aya göre finansal performans değişimi</p>
+            <div className="mt-6 pt-6 border-t border-border/50 relative z-10 flex flex-wrap gap-6">
+              <div>
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-1.5 opacity-60">Aylık Gelir</p>
+                <p className="text-xl font-black text-emerald-500 tracking-tight">+{formatWithEquivalent(totalIncome, 'TRY', isItemHidden('master_widget'))}</p>
+              </div>
+              <div>
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-1.5 opacity-60">Aylık Gider</p>
+                <p className="text-xl font-black text-rose-500 tracking-tight">-{formatWithEquivalent(totalExpense, 'TRY', isItemHidden('master_widget'))}</p>
+              </div>
+            </div>
           </div>
         );
 
@@ -321,30 +336,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'credit_cards':
         if (creditCardAccounts.length === 0) return null;
         return (
-          <div className="corporate-card p-8 relative group">
-            {moduleHeader('Kredi Kartları Özeti', <Wallet className="w-5 h-5" />)}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
-                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Toplam Borç</p>
-                <p className="text-2xl font-bold text-rose-500">{formatWithEquivalent(totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
+          <div className="corporate-card p-8 relative group overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-rose-500/10 transition-colors duration-500" />
+            {moduleHeader('Kredi Kartları Özeti', <CreditCard />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Toplam Borç</p>
+                <p className="text-2xl font-black text-rose-500 tracking-tighter">{formatWithEquivalent(totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
               </div>
-              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
-                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Toplam Limit</p>
-                <p className="text-2xl font-bold text-foreground">{formatWithEquivalent(totalCreditLimit, 'TRY', isItemHidden('credit_cards'))}</p>
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Toplam Limit</p>
+                <p className="text-2xl font-black text-foreground tracking-tighter">{formatWithEquivalent(totalCreditLimit, 'TRY', isItemHidden('credit_cards'))}</p>
               </div>
-              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
-                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Kullanılabilir Limit</p>
-                <p className="text-2xl font-bold text-emerald-500">{formatWithEquivalent(totalCreditLimit - totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Kullanılabilir Limit</p>
+                <p className="text-2xl font-black text-emerald-500 tracking-tighter">{formatWithEquivalent(totalCreditLimit - totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
               </div>
-              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
-                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Limit Doluluk</p>
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Limit Doluluk</p>
                 <div className="flex items-end gap-2">
-                  <p className="text-2xl font-bold text-foreground">
+                  <p className="text-2xl font-black text-foreground tracking-tighter">
                     {totalCreditLimit > 0 ? ((totalCreditCardDebt / totalCreditLimit) * 100).toFixed(1) : 0}%
                   </p>
-                  <div className="flex-1 h-2 bg-zinc-800 rounded-full mb-2 overflow-hidden">
+                  <div className="flex-1 h-2 bg-secondary rounded-full mb-1.5 overflow-hidden border border-border/50">
                     <div 
-                      className="h-full bg-rose-500 rounded-full" 
+                      className="h-full bg-rose-500 rounded-full shadow-sm" 
                       style={{ width: `${Math.min((totalCreditCardDebt / (totalCreditLimit || 1)) * 100, 100)}%` }}
                     />
                   </div>
@@ -352,16 +368,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
             
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
               {creditCardAccounts.map(acc => (
-                <div key={acc.id} className="p-4 rounded-2xl bg-zinc-950/30 border border-border flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-sm text-foreground">{acc.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-medium">Kesim Günü: {acc.statementDay}</p>
+                <div key={acc.id} className="p-4 rounded-xl bg-secondary/20 border border-border/50 flex justify-between items-center group/card hover:bg-secondary/40 transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center border border-rose-500/10 group-hover/card:scale-110 transition-transform">
+                      <CreditCard className="w-4 h-4 text-rose-500" />
+                    </div>
+                    <div>
+                      <p className="font-black text-xs text-foreground tracking-tight">{acc.name}</p>
+                      <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest opacity-60">Kesim Günü: {acc.statementDay}</p>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-rose-500">{formatWithEquivalent(acc.balance, acc.currency || 'TRY', isItemHidden('credit_cards'))}</p>
-                    <p className="text-[10px] text-muted-foreground font-medium">
+                    <p className="font-black text-base text-rose-500 tracking-tighter">{formatWithEquivalent(acc.balance, acc.currency || 'TRY', isItemHidden('credit_cards'))}</p>
+                    <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest opacity-60">
                       Asgari: {formatWithEquivalent(acc.balance * ((acc.creditLimit || 0) >= 25000 ? 0.4 : 0.2), acc.currency || 'TRY', isItemHidden('credit_cards'))}
                     </p>
                   </div>
@@ -373,29 +394,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'branch_distribution':
         return (
-          <div className="corporate-card p-8 relative group">
-            {moduleHeader('Varlık Dağılımı', <PieChart className="w-5 h-5" />)}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
-                <div className="flex items-center gap-2 text-blue-500 mb-3">
-                  <Building2 className="w-5 h-5" />
-                  <span className="font-bold text-xs uppercase tracking-wide">Bankalar</span>
+          <div className="corporate-card p-8 relative group overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-primary/10 transition-colors duration-500" />
+            {moduleHeader('Varlık Dağılımı', <PieChart />)}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
+              <button className="flex flex-col p-6 rounded-2xl bg-secondary/30 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all text-left group/item relative overflow-hidden shadow-sm hover:shadow-md">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-12 -mt-12 blur-2xl group-hover/item:bg-blue-500/10 transition-colors" />
+                <div className="flex items-center gap-3 text-blue-500 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/10">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <span className="font-black text-[9px] uppercase tracking-[0.2em] opacity-80">Bankalar</span>
                 </div>
-                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(bankBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
+                <span className="text-2xl font-black text-foreground group-hover/item:text-primary transition-colors tracking-tighter">{formatWithEquivalent(bankBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
               </button>
-              <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
-                <div className="flex items-center gap-2 text-orange-500 mb-3">
-                  <Bitcoin className="w-5 h-5" />
-                  <span className="font-bold text-xs uppercase tracking-wide">Kripto</span>
+              <button className="flex flex-col p-6 rounded-2xl bg-secondary/30 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all text-left group/item relative overflow-hidden shadow-sm hover:shadow-md">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full -mr-12 -mt-12 blur-2xl group-hover/item:bg-orange-500/10 transition-colors" />
+                <div className="flex items-center gap-3 text-orange-500 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/10">
+                    <Bitcoin className="w-5 h-5" />
+                  </div>
+                  <span className="font-black text-[9px] uppercase tracking-[0.2em] opacity-80">Kripto</span>
                 </div>
-                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(cryptoBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
+                <span className="text-2xl font-black text-foreground group-hover/item:text-primary transition-colors tracking-tighter">{formatWithEquivalent(cryptoBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
               </button>
-              <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
-                <div className="flex items-center gap-2 text-purple-500 mb-3">
-                  <Gift className="w-5 h-5" />
-                  <span className="font-bold text-xs uppercase tracking-wide">Sosyal/Hediye</span>
+              <button className="flex flex-col p-6 rounded-2xl bg-secondary/30 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all text-left group/item relative overflow-hidden shadow-sm hover:shadow-md">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full -mr-12 -mt-12 blur-2xl group-hover/item:bg-purple-500/10 transition-colors" />
+                <div className="flex items-center gap-3 text-purple-500 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/10">
+                    <Gift className="w-5 h-5" />
+                  </div>
+                  <span className="font-black text-[9px] uppercase tracking-[0.2em] opacity-80">Sosyal/Hediye</span>
                 </div>
-                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(socialBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
+                <span className="text-2xl font-black text-foreground group-hover/item:text-primary transition-colors tracking-tighter">{formatWithEquivalent(socialBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
               </button>
             </div>
           </div>
@@ -403,23 +434,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'payment_calendar':
         return (
-          <div className="corporate-card p-8 relative group">
-            {moduleHeader('Ödeme Takvimi', <Calendar className="w-5 h-5" />)}
-            <div className="space-y-3">
+          <div className="corporate-card p-8 relative group overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-amber-500/10 transition-colors duration-500" />
+            {moduleHeader('Ödeme Takvimi', <Calendar />)}
+            <div className="space-y-3 relative z-10">
               {calendarItems.length > 0 ? calendarItems.map(item => {
                 const colorClass = getPaymentStatusColor(item.date, item.status);
                 const label = getPaymentStatusLabel(item.date, item.status);
                 return (
-                  <div key={item.id} className={`flex items-center justify-between p-5 rounded-2xl border ${colorClass} bg-opacity-5 transition-all hover:bg-opacity-10`}>
+                  <div key={item.id} className={`flex items-center justify-between p-4 rounded-xl border ${colorClass} bg-opacity-5 transition-all hover:bg-opacity-10 group/item`}>
                     <div className="flex items-center gap-4">
-                      <div className={`w-2.5 h-2.5 rounded-full ${colorClass.split(' ')[1].replace('text-', 'bg-')} shadow-sm`} />
+                      <div className={`w-2.5 h-2.5 rounded-full ${colorClass.split(' ')[1].replace('text-', 'bg-')} shadow-sm group-hover/item:scale-125 transition-transform`} />
                       <div>
-                        <p className="font-bold text-sm text-foreground">{item.title}</p>
-                        <p className="text-xs font-medium opacity-80">{label}</p>
+                        <p className="font-black text-xs text-foreground tracking-tight">{item.title}</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest opacity-60">{label}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`font-bold ${item.type === 'income' ? 'text-emerald-500' : 'text-foreground'}`}>
+                      <p className={`font-black text-base tracking-tighter ${item.type === 'income' ? 'text-emerald-500' : 'text-foreground'}`}>
                         {item.type === 'income' ? '+' : '-'}
                         {formatWithEquivalent(item.amount, item.currency, isItemHidden('payment_calendar'))}
                       </p>
@@ -427,8 +459,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                 );
               }) : (
-                <div className="text-center py-12 bg-secondary/30 rounded-2xl border border-dashed border-border">
-                  <p className="text-muted-foreground text-sm font-medium">Yaklaşan ödeme veya gelir bulunmuyor.</p>
+                <div className="text-center py-12 bg-secondary/20 rounded-2xl border border-dashed border-border group hover:bg-secondary/30 transition-all">
+                  <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-500">
+                    <Clock className="w-6 h-6 text-muted-foreground/30" />
+                  </div>
+                  <p className="text-muted-foreground text-xs font-medium">Yaklaşan ödeme veya gelir bulunmuyor.</p>
                 </div>
               )}
             </div>
@@ -437,39 +472,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'cash_flow_radar':
         return (
-          <div className="corporate-card p-8 relative group">
-            {moduleHeader('Nakit Akış Radarı (Bu Ay)', <TrendingUp className="w-5 h-5" />)}
-            <div className="space-y-6">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground font-medium">Toplam Girdi</span>
-                  <span className="text-emerald-500 font-bold">{formatWithEquivalent(totalIncome, 'TRY', isItemHidden('cash_flow_radar'))}</span>
+          <div className="corporate-card p-8 relative group overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-emerald-500/10 transition-colors duration-500" />
+            {moduleHeader('Nakit Akış Radarı (Bu Ay)', <TrendingUp />)}
+            <div className="space-y-6 relative z-10">
+              <div className="group/progress">
+                <div className="flex justify-between text-xs mb-3">
+                  <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-60">Toplam Girdi</span>
+                  <span className="text-lg font-black text-emerald-500 tracking-tighter">{formatWithEquivalent(totalIncome, 'TRY', isItemHidden('cash_flow_radar'))}</span>
                 </div>
-                <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-secondary rounded-full h-2 overflow-hidden border border-border/50">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: '100%' }}
-                    className="bg-emerald-500 h-full rounded-full" 
+                    className="bg-emerald-500 h-full rounded-full shadow-sm" 
                   />
                 </div>
               </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground font-medium">Toplam Gider</span>
-                  <span className="text-destructive font-bold">{formatWithEquivalent(totalExpense, 'TRY', isItemHidden('cash_flow_radar'))}</span>
+              <div className="group/progress">
+                <div className="flex justify-between text-xs mb-3">
+                  <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-60">Toplam Gider</span>
+                  <span className="text-lg font-black text-rose-500 tracking-tighter">{formatWithEquivalent(totalExpense, 'TRY', isItemHidden('cash_flow_radar'))}</span>
                 </div>
-                <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-secondary rounded-full h-2 overflow-hidden border border-border/50">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: totalIncome > 0 ? `${Math.min((totalExpense / totalIncome) * 100, 100)}%` : '0%' }}
-                    className="bg-destructive h-full rounded-full" 
+                    className="bg-rose-500 h-full rounded-full shadow-sm" 
                   />
                 </div>
               </div>
-              <div className="pt-6 border-t border-border">
-                <p className="text-sm text-muted-foreground font-medium">
-                  Bu ay harcayabileceğin <span className="text-foreground font-bold">{formatWithEquivalent(Math.max(remainingBudget, 0), 'TRY', isItemHidden('cash_flow_radar'))}</span> daha var.
-                </p>
+              <div className="pt-6 border-t border-border/50">
+                <div className="p-4 rounded-xl bg-secondary/30 border border-border/50 group/info hover:bg-secondary/50 transition-all">
+                  <p className="text-xs text-muted-foreground font-medium leading-relaxed">
+                    Bu ay harcayabileceğin <span className="text-foreground font-black tracking-tight">{formatWithEquivalent(Math.max(remainingBudget, 0), 'TRY', isItemHidden('cash_flow_radar'))}</span> daha var.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -477,24 +515,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'quick_actions':
         return (
-          <div className="corporate-card p-8 relative group">
-            {moduleHeader('Hızlı İşlemler', <Plus className="w-5 h-5" />)}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <button onClick={onAddIncome} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-emerald-500/5 text-emerald-500 border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all gap-3 group/btn">
-                <Plus className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
-                <span className="text-xs font-bold uppercase tracking-wide">Gelir Ekle</span>
+          <div className="corporate-card p-8 relative group overflow-hidden">
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-primary/5 rounded-full -ml-32 -mb-32 blur-3xl group-hover:bg-primary/10 transition-colors duration-500" />
+            {moduleHeader('Hızlı İşlemler', <Plus />)}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+              <button onClick={onAddIncome} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-emerald-500/5 text-emerald-500 border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all gap-4 group/btn shadow-sm hover:shadow-xl hover:shadow-emerald-500/20">
+                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 group-hover/btn:bg-white/20 flex items-center justify-center transition-colors">
+                  <Plus className="w-6 h-6 group-hover/btn:scale-110 transition-transform" />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em]">Gelir Ekle</span>
               </button>
-              <button onClick={onAkbilLoad} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-blue-500/5 text-blue-500 border border-blue-500/10 hover:bg-blue-500 hover:text-white transition-all gap-3 group/btn">
-                <Bus className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
-                <span className="text-xs font-bold uppercase tracking-wide">Akbil Yükle</span>
+              <button onClick={onAkbilLoad} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-blue-500/5 text-blue-500 border border-blue-500/10 hover:bg-blue-500 hover:text-white transition-all gap-4 group/btn shadow-sm hover:shadow-xl hover:shadow-blue-500/20">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 group-hover/btn:bg-white/20 flex items-center justify-center transition-colors">
+                  <Bus className="w-6 h-6 group-hover/btn:scale-110 transition-transform" />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em]">Akbil Yükle</span>
               </button>
-              <button onClick={onCryptoTransfer} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-orange-500/5 text-orange-500 border border-orange-500/10 hover:bg-orange-500 hover:text-white transition-all gap-3 group/btn">
-                <ArrowRightLeft className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
-                <span className="text-xs font-bold uppercase tracking-wide">Kripto Transfer</span>
+              <button onClick={onCryptoTransfer} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-orange-500/5 text-orange-500 border border-orange-500/10 hover:bg-orange-500 hover:text-white transition-all gap-4 group/btn shadow-sm hover:shadow-xl hover:shadow-orange-500/20">
+                <div className="w-12 h-12 rounded-xl bg-orange-500/10 group-hover/btn:bg-white/20 flex items-center justify-center transition-colors">
+                  <ArrowRightLeft className="w-6 h-6 group-hover/btn:scale-110 transition-transform" />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em]">Kripto Transfer</span>
               </button>
-              <button onClick={onAddTransaction} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-secondary text-foreground border border-border hover:bg-primary hover:text-primary-foreground transition-all gap-3 group/btn">
-                <ArrowUpRight className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
-                <span className="text-xs font-bold uppercase tracking-wide">Gider Ekle</span>
+              <button onClick={onAddTransaction} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-secondary/50 text-foreground border border-border/50 hover:bg-primary hover:text-primary-foreground transition-all gap-4 group/btn shadow-sm hover:shadow-xl hover:shadow-primary/20">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 group-hover/btn:bg-white/20 flex items-center justify-center transition-colors">
+                  <ArrowUpRight className="w-6 h-6 group-hover/btn:scale-110 transition-transform" />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em]">Gider Ekle</span>
               </button>
             </div>
           </div>
@@ -508,23 +555,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const hiddenModules = layout.filter(item => !item.visible);
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-6 pb-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Finansal Durum</h1>
-          <p className="text-muted-foreground font-medium mt-1">Hane halkı varlık ve nakit akışı özeti</p>
+          <h1 className="text-3xl font-black tracking-tighter text-foreground">Finansal Durum</h1>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Hane halkı varlık ve nakit akışı özeti</p>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* Member Filter */}
           {members && Object.keys(members).length > 1 && (
-            <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
+            <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border/50 shadow-sm">
               <button
                 onClick={() => setSelectedMemberId('all')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all ${
                   selectedMemberId === 'all'
-                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-md'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                 }`}
               >
                 Tümü
@@ -533,13 +580,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   key={id}
                   onClick={() => setSelectedMemberId(id)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all flex items-center gap-2 ${
                     selectedMemberId === id
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-primary text-primary-foreground shadow-md'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                   }`}
                 >
-                  <div className={`w-2 h-2 rounded-full ${member.type === 'child' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${member.type === 'child' ? 'bg-blue-400' : 'bg-emerald-400'} shadow-sm`} />
                   {member.displayName}
                 </button>
               ))}
@@ -548,7 +595,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      <Reorder.Group axis="y" values={layout} onReorder={setLayout} className="space-y-8">
+      <Reorder.Group axis="y" values={layout} onReorder={setLayout} className="space-y-6">
         {layout.filter(item => item.visible).map(item => (
           <Reorder.Item key={item.id} value={item} className="focus:outline-none">
             {renderModule(item.id)}

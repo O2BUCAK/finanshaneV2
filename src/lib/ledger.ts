@@ -1,28 +1,29 @@
 import { localDB } from '../db';
 import { Transaction, Account } from '../types';
+import { db, doc, deleteDoc, setDoc } from './firebase';
 
 export async function createLedgerTransaction(
   householdId: string,
   txData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>
 ) {
   try {
-    return await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
+    const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `tx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const now = new Date();
+    
+    const newTx: Transaction = {
+      ...txData,
+      id,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
       const debitAccount = await localDB.accounts.get(txData.debitAccountId);
       const creditAccount = await localDB.accounts.get(txData.creditAccountId);
       
       if (!debitAccount || !creditAccount) {
         throw new Error('Hesap bulunamadı');
       }
-      
-      const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `tx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      const now = new Date();
-      
-      const newTx: Transaction = {
-        ...txData,
-        id,
-        createdAt: now,
-        updatedAt: now
-      };
       
       await localDB.transactions.add(newTx);
       
@@ -41,9 +42,12 @@ export async function createLedgerTransaction(
       await localDB.accounts.update(txData.creditAccountId, {
         balance: updateBalance(creditAccount, txData.amount, false)
       });
-      
-      return id;
     });
+
+    // Sync to Firestore
+    await setDoc(doc(db, `households/${householdId}/transactions/${id}`), newTx);
+    
+    return id;
   } catch (error) {
     console.error('Ledger transaction error:', error);
     throw error;
@@ -123,7 +127,7 @@ export async function deleteLedgerTransaction(
   transactionId: string
 ) {
   try {
-    return await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
+    await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
       const tx = await localDB.transactions.get(transactionId);
       if (!tx) throw new Error('İşlem bulunamadı');
       
@@ -152,6 +156,9 @@ export async function deleteLedgerTransaction(
       
       await localDB.transactions.delete(transactionId);
     });
+
+    // Sync to Firestore
+    await deleteDoc(doc(db, `households/${householdId}/transactions/${transactionId}`));
   } catch (error) {
     console.error('Delete transaction error:', error);
     throw error;

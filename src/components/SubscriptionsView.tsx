@@ -8,12 +8,15 @@ import { motion } from 'framer-motion';
 import { Account, Category } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { deleteDoc, doc, db } from '../lib/firebase';
+import { ConfirmModal } from './ConfirmModal';
+import { useState } from 'react';
 
 interface SubscriptionsViewProps {
   householdId: string;
   expenseSources: any[];
   accounts: Account[];
   categories: Account[];
+  members?: Record<string, any>;
   onAddSubscription: () => void;
   isPrivacyMode?: boolean;
 }
@@ -23,13 +26,16 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   expenseSources,
   accounts,
   categories,
+  members,
   onAddSubscription,
   isPrivacyMode = false
 }) => {
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmTitle, setDeleteConfirmTitle] = useState<string>('');
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState<string>('');
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Bu aboneliği silmek istediğinizden emin misiniz? Gelecek ödemeler artık oluşturulmayacak.')) return;
     try {
       await deleteDoc(doc(db, `households/${householdId}/expenseSources/${id}`));
     } catch (error) {
@@ -77,11 +83,20 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 uppercase tracking-wider">
                           Her Ayın {source.periodDay}. Günü
                         </span>
+                        {source.ownerId && members?.[source.ownerId] && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary/10 text-primary uppercase tracking-wider">
+                            {members[source.ownerId].displayName}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                   <button 
-                    onClick={() => handleDelete(source.id)}
+                    onClick={() => {
+                      setDeleteConfirmId(source.id);
+                      setDeleteConfirmTitle('Aboneliği Sil');
+                      setDeleteConfirmMessage(`${source.name} aboneliğini silmek istediğinizden emin misiniz? Gelecek ödemeler artık oluşturulmayacak.`);
+                    }}
                     className="p-2 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -138,6 +153,16 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           </div>
         )}
       </div>
+
+      <ConfirmModal 
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => {
+          if (deleteConfirmId) handleDelete(deleteConfirmId);
+        }}
+        title={deleteConfirmTitle}
+        message={deleteConfirmMessage}
+      />
     </div>
   );
 };

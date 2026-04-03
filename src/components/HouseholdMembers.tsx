@@ -3,13 +3,15 @@ import { Users, Plus, Trash2, Shield, User as UserIcon, Baby, MoreVertical, Mail
 import { motion, AnimatePresence } from 'framer-motion';
 import { localDB } from '../db';
 import { Household } from '../types';
+import { ConfirmModal } from './ConfirmModal';
 
 interface HouseholdMembersProps {
   household: Household;
   currentUserId: string;
+  showNotification?: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, currentUserId }) => {
+export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, currentUserId, showNotification }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
@@ -22,6 +24,12 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
 
   const [copySuccess, setCopySuccess] = useState(false);
   const [refreshingCode, setRefreshingCode] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    type: 'member' | 'refresh_code';
+    title: string;
+    message: string;
+  } | null>(null);
 
   const isOwner = household.ownerId === currentUserId;
 
@@ -35,7 +43,6 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
 
   const handleRefreshCode = async () => {
     if (!isOwner || refreshingCode) return;
-    if (!window.confirm('Yeni bir katılım kodu oluşturmak istediğinize emin misiniz? Eski kod artık çalışmayacaktır.')) return;
 
     setRefreshingCode(true);
     try {
@@ -47,11 +54,8 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       
       // Update LocalDB
       await localDB.households.update(household.id, { joinCode: newCode });
-      
-      alert('Yeni katılım kodu oluşturuldu.');
     } catch (error) {
       console.error('Error refreshing join code:', error);
-      alert('Kod yenilenirken bir hata oluştu.');
     } finally {
       setRefreshingCode(false);
     }
@@ -79,10 +83,14 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       setIsMergeModalOpen(false);
       setSelectedRealMemberId(null);
       setSelectedVirtualMemberId(null);
-      alert('Bireyler başarıyla eşleştirildi.');
+      if (showNotification) {
+        showNotification('Bireyler başarıyla eşleştirildi.', 'success');
+      }
     } catch (error) {
       console.error('Error merging members:', error);
-      alert('Eşleştirme sırasında bir hata oluştu.');
+      if (showNotification) {
+        showNotification('Eşleştirme sırasında bir hata oluştu.', 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -121,7 +129,6 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
 
   const handleRemoveMember = async (memberId: string) => {
     if (!isOwner || memberId === currentUserId) return;
-    if (!window.confirm('Bu üyeyi haneden çıkarmak istediğinize emin misiniz?')) return;
 
     try {
       const updatedMembers = { ...household.members };
@@ -186,7 +193,12 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
                   {copySuccess ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Mail className="w-3.5 h-3.5" />}
                 </button>
                 <button 
-                  onClick={handleRefreshCode}
+                  onClick={() => setDeleteConfirm({
+                    id: 'refresh',
+                    type: 'refresh_code',
+                    title: 'Kodu Yenile?',
+                    message: 'Yeni bir katılım kodu oluşturmak istediğinize emin misiniz? Eski kod artık çalışmayacaktır.'
+                  })}
                   disabled={refreshingCode}
                   className="p-1.5 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-primary disabled:opacity-50"
                   title="Kodu Yenile"
@@ -223,7 +235,12 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
               {copySuccess ? <Check className="w-5 h-5 text-emerald-500" /> : <Mail className="w-5 h-5" />}
             </button>
             <button 
-              onClick={handleRefreshCode}
+              onClick={() => setDeleteConfirm({
+                id: 'refresh',
+                type: 'refresh_code',
+                title: 'Kodu Yenile?',
+                message: 'Yeni bir katılım kodu oluşturmak istediğinize emin misiniz? Eski kod artık çalışmayacaktır.'
+              })}
               disabled={refreshingCode}
               className="p-2 bg-muted rounded-xl transition-colors text-muted-foreground disabled:opacity-50"
               title="Kodu Yenile"
@@ -291,7 +308,12 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
               )}
               {isOwner && id !== currentUserId && (
                 <button
-                  onClick={() => handleRemoveMember(id)}
+                  onClick={() => setDeleteConfirm({
+                    id,
+                    type: 'member',
+                    title: 'Bireyi Çıkar?',
+                    message: 'Bu üyeyi haneden çıkarmak istediğinize emin misiniz?'
+                  })}
                   className="p-2 text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
                   title="Üyeyi Çıkar"
                 >
@@ -435,6 +457,18 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal 
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (!deleteConfirm) return;
+          if (deleteConfirm.type === 'refresh_code') handleRefreshCode();
+          if (deleteConfirm.type === 'member') handleRemoveMember(deleteConfirm.id);
+        }}
+        title={deleteConfirm?.title || ''}
+        message={deleteConfirm?.message || ''}
+      />
     </div>
   );
 };

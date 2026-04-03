@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   TrendingUp, Plus, Calendar, ArrowUpRight, 
-  Clock, Wallet, Briefcase, Target
+  Clock, Wallet, Briefcase, Target, Trash2, Check, X
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { IncomeSource, ExpectedIncome, Account, Transaction } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
+import { deleteIncomeSource, deleteExpectedIncome } from '../lib/incomeSources';
+import { deleteLedgerTransaction } from '../lib/ledger';
+import { formatAmount, parseAmount, cleanAmountInput } from '../utils/formatters';
+import { ConfirmModal } from './ConfirmModal';
 
 interface IncomeViewProps {
   householdId: string;
@@ -15,7 +19,7 @@ interface IncomeViewProps {
   accounts: Account[];
   onAddIncome: () => void;
   onEditIncome: (source: IncomeSource) => void;
-  onApproveIncome: (expected: ExpectedIncome) => void;
+  onApproveIncome: (expected: ExpectedIncome, customAmount?: number) => void;
   isPrivacyMode?: boolean;
 }
 
@@ -31,8 +35,53 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
   isPrivacyMode = false
 }) => {
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [customAmount, setCustomAmount] = useState<string>('');
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    type: 'source' | 'expected' | 'transaction';
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const handleDeleteSource = async (id: string) => {
+    try {
+      await deleteIncomeSource(householdId, id);
+    } catch (error) {
+      console.error('Error deleting income source:', error);
+    }
+  };
+
+  const handleDeleteExpected = async (id: string) => {
+    try {
+      await deleteExpectedIncome(householdId, id);
+    } catch (error) {
+      console.error('Error deleting expected income:', error);
+    }
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    try {
+      await deleteLedgerTransaction(householdId, id);
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+    }
+  };
 
   const pendingIncomes = expectedIncomes.filter(i => i.status === 'pending');
+
+  const startApprove = (income: ExpectedIncome) => {
+    setApprovingId(income.id);
+    setCustomAmount(income.amount.toString());
+  };
+
+  const confirmApprove = (income: ExpectedIncome) => {
+    const amount = parseFloat(customAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    onApproveIncome(income, amount);
+    setApprovingId(null);
+  };
+
   const realizedIncomes = transactions.filter(tx => {
     const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
     const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
@@ -73,20 +122,75 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                 <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
                   <TrendingUp className="w-5 h-5 text-emerald-500" />
                 </div>
-                <span className="text-[10px] font-bold px-2 py-1 rounded bg-zinc-800 text-zinc-400 uppercase tracking-wider">
-                  {new Date(income.expectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold px-2 py-1 rounded bg-zinc-800 text-zinc-400 uppercase tracking-wider">
+                    {new Date(income.expectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
+                  </span>
+                  <button 
+                    onClick={() => setDeleteConfirm({
+                      id: income.id,
+                      type: 'expected',
+                      title: 'Beklenen Geliri Sil',
+                      message: `${income.sourceName} için beklenen bu geliri silmek istediğinizden emin misiniz?`
+                    })}
+                    className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <h3 className="font-bold text-white mb-1">{income.sourceName}</h3>
               <p className="text-2xl font-bold text-emerald-500 mb-4">
                 {formatWithEquivalent(income.amount, income.currency || 'TRY')}
               </p>
-              <button 
-                onClick={() => onApproveIncome(income)}
-                className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-xl text-xs font-bold transition-all"
-              >
-                Tahsil Edildi Olarak İşaretle
-              </button>
+              
+              <AnimatePresence mode="wait">
+                {approvingId === income.id ? (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="space-y-3"
+                  >
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Yatan Net Tutar</label>
+                      <div className="relative">
+                        <input 
+                          type="text"
+                          autoFocus
+                          value={formatAmount(customAmount)}
+                          onChange={(e) => setCustomAmount(parseAmount(cleanAmountInput(e.target.value)))}
+                          className="w-full bg-zinc-950 border border-emerald-500/50 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500">{income.currency || 'TRY'}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => confirmApprove(income)}
+                        className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+                      >
+                        <Check className="w-4 h-4" /> Onayla
+                      </button>
+                      <button 
+                        onClick={() => setApprovingId(null)}
+                        className="p-2 bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.button 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    onClick={() => startApprove(income)}
+                    className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-xl text-xs font-bold transition-all"
+                  >
+                    Tahsil Edildi Olarak İşaretle
+                  </motion.button>
+                )}
+              </AnimatePresence>
             </div>
           ))}
         </div>
@@ -106,12 +210,28 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
               className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl hover:border-emerald-500/30 transition-all cursor-pointer group"
             >
               <div className="flex justify-between items-center mb-3">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                  source.flowType === 'fixed' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'
-                }`}>
-                  {source.flowType === 'fixed' ? 'Sabit' : source.flowType === 'variable' ? 'Değişken' : 'Spot'}
-                </span>
-                <span className="text-xs text-zinc-500">Her ayın {source.periodDay}. günü</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                    source.flowType === 'fixed' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'
+                  }`}>
+                    {source.flowType === 'fixed' ? 'Sabit' : source.flowType === 'variable' ? 'Değişken' : 'Spot'}
+                  </span>
+                  <span className="text-xs text-zinc-500">Her ayın {source.periodDay}. günü</span>
+                </div>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteConfirm({
+                      id: source.id,
+                      type: 'source',
+                      title: 'Gelir Kaynağını Sil',
+                      message: `${source.name} gelir kaynağını ve buna bağlı tüm bekleyen gelecek gelirleri silmek istediğinizden emin misiniz?`
+                    });
+                  }}
+                  className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
               <h3 className="font-bold text-white">{source.name}</h3>
               <p className="text-lg font-bold text-zinc-300 mt-1">
@@ -136,11 +256,12 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Açıklama</th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Hesap</th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Tutar</th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
               {realizedIncomes.slice(0, 10).map(tx => (
-                <tr key={tx.id} className="hover:bg-zinc-800/50 transition-colors">
+                <tr key={tx.id} className="hover:bg-zinc-800/50 transition-colors group">
                   <td className="px-6 py-4 text-sm text-zinc-400">
                     {new Date(tx.date).toLocaleDateString('tr-TR')}
                   </td>
@@ -153,12 +274,38 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                   <td className="px-6 py-4 text-sm font-bold text-emerald-500 text-right">
                     +{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
                   </td>
+                  <td className="px-6 py-4 text-right">
+                    <button 
+                      onClick={() => setDeleteConfirm({
+                        id: tx.id,
+                        type: 'transaction',
+                        title: 'İşlemi Sil',
+                        message: `${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`
+                      })}
+                      className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      <ConfirmModal 
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (!deleteConfirm) return;
+          if (deleteConfirm.type === 'source') handleDeleteSource(deleteConfirm.id);
+          if (deleteConfirm.type === 'expected') handleDeleteExpected(deleteConfirm.id);
+          if (deleteConfirm.type === 'transaction') handleDeleteTransaction(deleteConfirm.id);
+        }}
+        title={deleteConfirm?.title || ''}
+        message={deleteConfirm?.message || ''}
+      />
     </div>
   );
 };

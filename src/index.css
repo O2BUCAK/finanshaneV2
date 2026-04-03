@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -23,7 +24,7 @@
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 221.2 83.2% 53.3%;
-    --radius: 0.75rem;
+    --radius: 1rem;
   }
 
   .dark {
@@ -55,6 +56,7 @@
   }
   body {
     @apply bg-background text-foreground antialiased transition-colors duration-300;
+    font-family: 'Inter', system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
@@ -64,5 +66,13 @@
 }
 
 .corporate-card {
-  @apply bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm rounded-2xl transition-all hover:shadow-md;
+  @apply bg-card border border-border/50 shadow-sm rounded-[2.5rem] transition-all duration-500 hover:shadow-2xl hover:shadow-primary/5 hover:border-primary/20;
+}
+
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70;
+}
+
+.bg-gradient-primary {
+  @apply bg-gradient-to-br from-primary to-primary/80;
 }

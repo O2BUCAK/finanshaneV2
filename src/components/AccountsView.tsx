@@ -88,95 +88,106 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Hesaplarım</h1>
-          <p className="text-zinc-400 font-medium mt-1">Tüm banka, kripto ve sosyal hesaplarınızın yönetimi</p>
+          <h1 className="text-2xl font-black tracking-tighter text-foreground">Hesaplarım</h1>
+          <p className="text-muted-foreground text-xs font-medium mt-0.5">Tüm banka, kripto ve sosyal hesaplarınızın yönetimi</p>
         </div>
+        <button 
+          onClick={onAddAccount}
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          Yeni Hesap Ekle
+        </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+      <div className="relative group">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-secondary/50 rounded-lg flex items-center justify-center border border-border/50 group-focus-within:border-primary/30 transition-all duration-500 shadow-sm">
+          <Search className="w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+        </div>
         <input 
           type="text"
           placeholder="Hesap veya kurum ara..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl pl-12 pr-4 py-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
+          className="w-full bg-zinc-900/30 border border-border/50 rounded-xl pl-14 pr-6 py-3 focus:outline-none focus:ring-2 focus:ring-primary/10 text-foreground transition-all shadow-sm focus:shadow-xl focus:bg-zinc-900/50 text-sm font-black tracking-tight placeholder:text-muted-foreground/30"
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
         {filteredAccounts.map(account => (
           <motion.div 
             key={account.id}
             layout
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="group bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-zinc-700 transition-all"
+            className="group corporate-card overflow-hidden relative border border-border/30 hover:border-primary/30 transition-all duration-500"
           >
-            <div className="p-6 space-y-4">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full -mr-24 -mt-24 blur-3xl group-hover:bg-primary/10 transition-colors duration-700" />
+            
+            <div className="p-10 space-y-10 relative z-10">
               <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 bg-secondary/50 rounded-[2rem] flex items-center justify-center border border-border/50 shadow-sm group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-primary/10 transition-all duration-500">
                     {getBranchIcon(account.branch || '')}
                   </div>
                   <div>
-                    <h3 className="font-bold text-white group-hover:text-emerald-500 transition-colors">{account.name}</h3>
-                    <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">{account.institution || 'Diğer'}</p>
+                    <h3 className="font-black text-2xl text-foreground group-hover:text-primary transition-colors tracking-tighter leading-tight">{account.name}</h3>
+                    <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mt-2">{account.institution || 'Diğer Kurum'}</p>
                   </div>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-3">
                   {account.apiConfig && (
                     <button 
                       onClick={() => handleSync(account)}
                       disabled={syncingIds.has(account.id)}
-                      className={`p-2 rounded-xl transition-all ${
+                      className={`p-3.5 rounded-2xl transition-all duration-500 ${
                         syncingIds.has(account.id) 
-                          ? 'bg-emerald-500/10 text-emerald-500 animate-spin' 
-                          : 'bg-zinc-950 text-zinc-400 hover:text-emerald-500 border border-zinc-800'
+                          ? 'bg-emerald-500/20 text-emerald-500 animate-spin' 
+                          : 'bg-secondary/50 text-muted-foreground hover:text-emerald-500 border border-border/50 hover:bg-emerald-500/10 hover:border-emerald-500/30'
                       }`}
                       title="API ile Senkronize Et"
                     >
-                      <RefreshCw className="w-4 h-4" />
+                      <RefreshCw className="w-5 h-5" />
                     </button>
                   )}
                   <button 
                     onClick={() => toggleLocalPrivacy(account.id)}
-                    className={`p-2 border border-zinc-800 rounded-xl transition-all ${
+                    className={`p-3.5 border border-border/50 rounded-2xl transition-all duration-500 ${
                       isAccountHidden(account.id)
-                        ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20'
-                        : 'bg-zinc-950 text-zinc-400 hover:text-white'
+                        ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30 shadow-lg shadow-emerald-500/10'
+                        : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary'
                     }`}
                     title={isAccountHidden(account.id) ? 'Göster' : 'Gizle'}
                   >
-                    {isAccountHidden(account.id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                    {isAccountHidden(account.id) ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
                   </button>
                   <button 
                     onClick={() => onEditAccount(account)}
-                    className="p-2 bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800 rounded-xl transition-all"
+                    className="p-3.5 bg-secondary/50 text-muted-foreground hover:text-foreground border border-border/50 rounded-2xl transition-all duration-500 hover:bg-secondary"
                     title="Düzenle"
                   >
-                    <Settings2 className="w-4 h-4" />
+                    <Settings2 className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-zinc-800/50">
+              <div className="pt-10 border-t border-border/30">
                 <div className="flex justify-between items-end">
                   <div>
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-4 opacity-60">
                       {account.subType === 'credit_card' ? 'Güncel Borç' : 'Güncel Bakiye'}
                     </p>
-                    <p className={`text-2xl font-bold tracking-tight ${account.subType === 'credit_card' ? 'text-rose-500' : 'text-white'}`}>
+                    <p className={`text-5xl font-black tracking-tighter ${account.subType === 'credit_card' ? 'text-rose-500' : 'text-foreground'}`}>
                       {formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
                     </p>
                   </div>
                   {account.apiConfig?.lastSync && (
                     <div className="text-right">
-                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1">Son Senk.</p>
-                      <p className="text-[10px] text-zinc-400 font-medium">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-4 opacity-60">Son Senk.</p>
+                      <p className="text-sm font-black text-muted-foreground opacity-80">
                         {new Date(account.apiConfig.lastSync).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -184,29 +195,33 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </div>
 
                 {account.subType === 'credit_card' && (
-                  <div className="mt-4 space-y-3 p-3 bg-zinc-950/50 rounded-2xl border border-zinc-800/50">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Kart Limiti</span>
-                      <span className="text-xs font-bold text-zinc-300">{formatWithEquivalent(account.creditLimit || 0, account.currency || 'TRY', isAccountHidden(account.id))}</span>
+                  <div className="mt-10 space-y-8 p-8 bg-zinc-950/30 rounded-[2.5rem] border border-border/50 relative overflow-hidden group/card-info hover:bg-zinc-950/50 transition-all duration-500">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full -mr-16 -mt-16 blur-3xl transition-all duration-700 group-hover/card-info:bg-rose-500/10" />
+                    
+                    <div className="flex justify-between items-center relative z-10">
+                      <span className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kart Limiti</span>
+                      <span className="text-base font-black text-foreground">{formatWithEquivalent(account.creditLimit || 0, account.currency || 'TRY', isAccountHidden(account.id))}</span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Kalan Limit</span>
-                      <span className="text-xs font-bold text-emerald-500">{formatWithEquivalent((account.creditLimit || 0) - account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</span>
+                    <div className="flex justify-between items-center relative z-10">
+                      <span className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kalan Limit</span>
+                      <span className="text-base font-black text-emerald-500">{formatWithEquivalent((account.creditLimit || 0) - account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</span>
                     </div>
-                    <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-rose-500 rounded-full" 
-                        style={{ width: `${Math.min((account.balance / (account.creditLimit || 1)) * 100, 100)}%` }}
+                    <div className="h-3 w-full bg-secondary/50 rounded-full overflow-hidden relative z-10 p-0.5 border border-border/30">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min((account.balance / (account.creditLimit || 1)) * 100, 100)}%` }}
+                        transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
+                        className="h-full bg-gradient-to-r from-rose-500 to-rose-400 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.4)]" 
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="grid grid-cols-2 gap-8 pt-2 relative z-10">
                       <div>
-                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Güncel Borç</p>
-                        <p className="text-xs font-bold text-zinc-200">{formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</p>
+                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-2">Güncel Borç</p>
+                        <p className="text-base font-black text-foreground">{formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Asgari Tutar</p>
-                        <p className="text-xs font-bold text-zinc-200">
+                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-2">Asgari Tutar</p>
+                        <p className="text-base font-black text-foreground">
                           {formatWithEquivalent(account.balance * ((account.creditLimit || 0) >= 25000 ? 0.4 : 0.2), account.currency || 'TRY', isAccountHidden(account.id))}
                         </p>
                       </div>
@@ -221,13 +236,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className={`p-3 rounded-xl flex items-center gap-2 text-xs font-medium ${
+                    className={`p-4 rounded-2xl flex items-center gap-3 text-xs font-black uppercase tracking-widest ${
                       syncResults[account.id].success 
                         ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
                         : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
                     }`}
                   >
-                    {syncResults[account.id].success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                    {syncResults[account.id].success ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
                     {syncResults[account.id].message}
                   </motion.div>
                 )}
@@ -235,9 +250,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             </div>
             
             {account.branch === 'crypto' && (
-              <div className="px-6 py-3 bg-zinc-950/50 border-t border-zinc-800 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Kripto Varlık</span>
-                <ExternalLink className="w-3 h-3 text-zinc-600" />
+              <div className="px-10 py-4 bg-secondary/50 border-t border-border/50 flex items-center justify-between group-hover:bg-secondary/80 transition-colors">
+                <div className="flex items-center gap-3">
+                  <Bitcoin className="w-4 h-4 text-orange-500" />
+                  <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.25em] opacity-60">Kripto Varlık</span>
+                </div>
+                <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
               </div>
             )}
           </motion.div>
@@ -245,12 +263,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       </div>
 
       {filteredAccounts.length === 0 && (
-        <div className="text-center py-20 bg-zinc-900/50 border border-dashed border-zinc-800 rounded-3xl">
-          <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Wallet className="w-8 h-8 text-zinc-500" />
+        <div className="text-center py-32 bg-secondary/20 border border-dashed border-border rounded-[3rem] group hover:bg-secondary/30 transition-all">
+          <div className="w-24 h-24 bg-secondary rounded-[2rem] flex items-center justify-center mx-auto mb-8 group-hover:scale-110 transition-transform duration-500 shadow-sm">
+            <Wallet className="w-10 h-10 text-muted-foreground" />
           </div>
-          <h3 className="text-xl font-bold text-white mb-2">Hesap Bulunamadı</h3>
-          <p className="text-zinc-400 max-w-xs mx-auto">Arama kriterlerinize uygun hesap bulunamadı veya henüz hesap eklemediniz.</p>
+          <h3 className="text-2xl font-black text-foreground mb-3 tracking-tight">Hesap Bulunamadı</h3>
+          <p className="text-muted-foreground max-w-xs mx-auto font-medium">Arama kriterlerinize uygun hesap bulunamadı veya henüz hesap eklemediniz.</p>
         </div>
       )}
     </div>

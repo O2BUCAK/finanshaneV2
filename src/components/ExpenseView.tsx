@@ -1,13 +1,16 @@
 import React from 'react';
 import { 
   TrendingDown, Plus, Calendar, ArrowDownLeft, 
-  Clock, Wallet, Briefcase, Target, CreditCard, Tag
+  Clock, Wallet, Briefcase, Target, CreditCard, Tag, Trash2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { PlannedExpense, Account, Transaction, Category } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { SubscriptionsView } from './SubscriptionsView';
 import { PlannedExpenses } from './PlannedExpenses';
+import { deleteLedgerTransaction } from '../lib/ledger';
+import { ConfirmModal } from './ConfirmModal';
+import { useState } from 'react';
 
 interface ExpenseViewProps {
   householdId: string;
@@ -16,6 +19,7 @@ interface ExpenseViewProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: Account[];
+  members?: Record<string, any>;
   onAddTransaction: () => void;
   onAddSubscription: () => void;
   onAddPlannedExpense: () => void;
@@ -29,12 +33,24 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
   transactions,
   accounts,
   categories,
+  members,
   onAddTransaction,
   onAddSubscription,
   onAddPlannedExpense,
   isPrivacyMode = false
 }) => {
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmTitle, setDeleteConfirmTitle] = useState<string>('');
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState<string>('');
+
+  const handleDeleteTransaction = async (id: string) => {
+    try {
+      await deleteLedgerTransaction(householdId, id);
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+    }
+  };
 
   const expenseTransactions = transactions.filter(tx => {
     const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
@@ -78,6 +94,7 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
           householdId={householdId}
           accounts={accounts}
           categories={categories}
+          members={members}
           isPrivacyMode={isPrivacyMode}
         />
       </div>
@@ -101,6 +118,7 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
           expenseSources={expenseSources}
           accounts={accounts}
           categories={categories}
+          members={members}
           onAddSubscription={onAddSubscription}
           isPrivacyMode={isPrivacyMode}
         />
@@ -120,13 +138,14 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Açıklama</th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Kategori</th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Tutar</th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
               {expenseTransactions.slice(0, 10).map(tx => {
                 const category = categories.find(c => c.id === tx.categoryId);
                 return (
-                  <tr key={tx.id} className="hover:bg-zinc-800/50 transition-colors">
+                  <tr key={tx.id} className="hover:bg-zinc-800/50 transition-colors group">
                     <td className="px-6 py-4 text-sm text-zinc-400">
                       {new Date(tx.date).toLocaleDateString('tr-TR')}
                     </td>
@@ -142,6 +161,18 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                     <td className="px-6 py-4 text-sm font-bold text-rose-500 text-right">
                       -{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      <button 
+                        onClick={() => {
+                          setDeleteConfirmId(tx.id);
+                          setDeleteConfirmTitle('İşlemi Sil');
+                          setDeleteConfirmMessage(`${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`);
+                        }}
+                        className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -149,6 +180,16 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
           </table>
         </div>
       </div>
+
+      <ConfirmModal 
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => {
+          if (deleteConfirmId) handleDeleteTransaction(deleteConfirmId);
+        }}
+        title={deleteConfirmTitle}
+        message={deleteConfirmMessage}
+      />
     </div>
   );
 };

@@ -61,9 +61,11 @@ import {
 } from 'recharts';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { formatAmount, parseAmount, cleanAmountInput } from './utils/formatters';
+import { isHoliday } from './utils/holidays';
 import { useCollection } from './hooks/useFirestore';
 import { useExchangeRates } from './hooks/useExchangeRates';
 import { useAssetPrices } from './hooks/useAssetPrices';
+import { createIncomeSource, updateIncomeSource, updateExpectedIncome, createExpectedIncome } from './lib/incomeSources';
 import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, createInstallmentTransactions } from './lib/ledger';
 import { createExpenseSource } from './lib/expenseSources';
 import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense, Household, UserProfile, ExpenseSource } from './types';
@@ -91,6 +93,7 @@ import { AccountsView } from './components/AccountsView';
 import { SubscriptionsView } from './components/SubscriptionsView';
 import { IncomeView } from './components/IncomeView';
 import { ExpenseView } from './components/ExpenseView';
+import { ConfirmModal } from './components/ConfirmModal';
 
 // --- Constants ---
 
@@ -134,10 +137,14 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
     const date = new Date(mealYear, mealMonth, 1);
     while (date.getMonth() === mealMonth) {
       const day = date.getDay();
-      if (workingDaysPerWeek === 5) {
-        if (day !== 0 && day !== 6) count++;
-      } else {
-        if (day !== 0) count++;
+      const isPublicHoliday = isHoliday(date);
+      
+      if (!isPublicHoliday) {
+        if (workingDaysPerWeek === 5) {
+          if (day !== 0 && day !== 6) count++;
+        } else {
+          if (day !== 0) count++;
+        }
       }
       date.setDate(date.getDate() + 1);
     }
@@ -191,31 +198,12 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
         currency,
         targetAccountId,
         periodDay: flowType !== 'spot' ? parseInt(periodDay) : null,
-        createdAt: initialData ? (initialData.createdAt || new Date()) : new Date(),
       };
 
-      const sourceRef = initialData 
-        ? doc(db, `households/${householdId}/incomeSources/${initialData.id}`)
-        : doc(collection(db, `households/${householdId}/incomeSources`));
-      
-      await setDoc(sourceRef, sourceData, { merge: true });
-      
-      // If it's a new fixed/variable source, we might want to generate the first expected income
-      if (!initialData && flowType !== 'spot') {
-        const expectedDate = new Date();
-        expectedDate.setDate(parseInt(periodDay));
-        if (expectedDate < new Date()) expectedDate.setMonth(expectedDate.getMonth() + 1);
-
-        await setDoc(doc(collection(db, `households/${householdId}/expectedIncomes`)), {
-          sourceId: sourceRef.id,
-          sourceName: name,
-          amount: parseFloat(amount),
-          currency,
-          expectedDate: new Date(expectedDate),
-          status: 'pending',
-          targetAccountId,
-          createdAt: new Date(),
-        });
+      if (initialData) {
+        await updateIncomeSource(householdId, initialData.id, sourceData);
+      } else {
+        await createIncomeSource(householdId, sourceData);
       }
 
       onClose();
@@ -316,6 +304,12 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
                   animate={{ opacity: 1, y: 0 }}
                   className="p-4 bg-zinc-950 border border-emerald-500/30 rounded-2xl space-y-4 mb-2"
                 >
+                  <div className="flex items-start gap-2 p-2 bg-emerald-500/5 rounded-xl border border-emerald-500/10 mb-2">
+                    <Info className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
+                    <p className="text-[9px] text-emerald-400 leading-tight">
+                      Hesaplama yapılırken seçilen aydaki hafta sonları ve Türkiye resmi tatilleri (2025-2026) otomatik olarak düşülür.
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-[10px] text-zinc-500 font-bold uppercase">Günlük Ücret</label>
@@ -378,7 +372,7 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
                     onClick={calculateMealAllowance}
                     className="w-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
                   >
-                    Hesapla ve Uygula
+                    Hesapla ve Uygula (Resmi Tatiller Hariç)
                   </button>
                 </motion.div>
               )}
@@ -1424,16 +1418,21 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">İşlemi Yapan</label>
-            <select 
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none"
-            >
-              {Object.entries(members || {}).map(([id, m]: [string, any]) => (
-                <option key={id} value={id}>{m.displayName}</option>
-              ))}
-            </select>
+            <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              {isSubscription ? 'Sorumlu Birey' : 'İşlemi Yapan'}
+            </label>
+            <div className="relative">
+              <select 
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none text-white cursor-pointer"
+              >
+                {Object.entries(members || {}).map(([id, m]: [string, any]) => (
+                  <option key={id} value={id}>{m.displayName}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 pointer-events-none" />
+            </div>
           </div>
 
           <div className="flex p-1 bg-zinc-950 rounded-2xl border border-zinc-800">
@@ -1914,7 +1913,7 @@ const Login = () => {
                 >
                   KVKK Aydınlatma Metni
                 </button>
-                'ni okudum ve verilerimin yerel olarak işlenmesini onaylıyorum.
+                'ni okudum ve verilerimin güvenli şekilde işlenmesini onaylıyorum.
               </label>
             </div>
 
@@ -1923,7 +1922,7 @@ const Login = () => {
               disabled={isLoggingIn}
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoggingIn ? 'Giriş Yapılıyor...' : 'Yerel Giriş Yap'}
+              {isLoggingIn ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
             </button>
           </form>
         </div>
@@ -1966,7 +1965,7 @@ const KVKKConsentModal = ({ isOpen, onAccept }: { isOpen: boolean; onAccept: () 
           <p>Kişisel verileriniz; bütçe yönetimi, finansal analizler, hane içi paylaşım ve uygulama hizmetlerinin sunulması amacıyla işlenmektedir.</p>
           
           <h4 className="text-white font-bold">2. Veri Güvenliği ve Saklama</h4>
-          <p>Verileriniz tarayıcınızın yerel veritabanında (IndexedDB) şifrelenmiş olarak saklanmaktadır. FinansHane, verilerinizi merkezi bir sunucuya göndermez; tüm finansal kayıtlarınız sadece sizin cihazınızda kalır. Güvenliğiniz için önemli işlemler (giriş, veri dışa aktarma vb.) yerel bir Güvenlik Günlüğü'nde kayıt altına alınır.</p>
+          <p>Verileriniz güvenli bulut altyapısında (Firebase) şifrelenmiş olarak saklanmakta ve performans için tarayıcınızda (IndexedDB) önbelleğe alınmaktadır. FinansHane, verilerinizi 2026 Türkiye KVKK standartlarına tam uyumlu şekilde korur. Güvenliğiniz için önemli işlemler (giriş, veri dışa aktarma vb.) Güvenlik Günlüğü'nde kayıt altına alınır.</p>
           
           <h4 className="text-white font-bold">3. Veri Sahibi Hakları</h4>
           <p>Dilediğiniz zaman uygulama ayarlarından tüm verilerinizi silebilir veya dışa aktarabilirsiniz. Verileriniz üzerinde tam kontrol sahibisiniz.</p>
@@ -2412,6 +2411,7 @@ const Dashboard = () => {
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
   const [editingIncomeSource, setEditingIncomeSource] = useState<IncomeSource | null>(null);
   const [isDeleteTxConfirmOpen, setIsDeleteTxConfirmOpen] = useState(false);
+  const [isDeleteAllDataConfirmOpen, setIsDeleteAllDataConfirmOpen] = useState(false);
   const [txToDelete, setTxToDelete] = useState<string | null>(null);
   const [isKVKKModalOpen, setIsKVKKModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -2481,8 +2481,6 @@ const Dashboard = () => {
   };
 
   const handleDeleteAllData = async () => {
-    if (!confirm("Tüm verileriniz kalıcı olarak silinecektir. Bu işlem geri alınamaz. Emin misiniz?")) return;
-    
     try {
       await logSecurityAction('delete_all_data', 'User initiated full data deletion');
       await localDB.accounts.clear();
@@ -2510,7 +2508,6 @@ const Dashboard = () => {
       localDB.auditLogs.orderBy('timestamp').reverse().limit(50).toArray().then(setAuditLogs);
     }
   }, [activeTab]);
-  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setNotification({ message, type });
@@ -2766,14 +2763,14 @@ const Dashboard = () => {
     setIsSidebarOpen(false);
   };
 
-  const handleApproveIncome = async (expected: ExpectedIncome) => {
+  const handleApproveIncome = async (expected: ExpectedIncome, customAmount?: number) => {
     if (!household || !user) return;
     
     try {
       // 1. Create a transaction
       const txData = {
         description: `${expected.sourceName} (Gerçekleşen)`,
-        amount: expected.amount,
+        amount: customAmount || expected.amount,
         currency: expected.currency,
         date: new Date(),
         debitAccountId: expected.targetAccountId,
@@ -2785,26 +2782,26 @@ const Dashboard = () => {
       await createLedgerTransaction(household.id, txData);
 
       // 2. Update expected income status
-      await setDoc(doc(db, `households/${household.id}/expectedIncomes/${expected.id}`), {
+      await updateExpectedIncome(household.id, expected.id, {
         status: 'realized',
-        transactionId: 'temp-id', // Ideally we get the ID from createLedgerTransaction
-      }, { merge: true });
+        transactionId: 'temp-id',
+      });
 
       // 3. If it's a fixed/variable source, generate the NEXT expected income
       const source = incomeSources.find(s => s.id === expected.sourceId);
       if (source && source.flowType !== 'spot') {
-        const nextDate = expected.expectedDate;
+        const nextDate = new Date(expected.expectedDate);
         nextDate.setMonth(nextDate.getMonth() + 1);
         
-        await setDoc(doc(collection(db, `households/${household.id}/expectedIncomes`)), {
+        await createExpectedIncome(household.id, {
           sourceId: source.id,
           sourceName: source.name,
           amount: source.amount,
           currency: source.currency,
-          expectedDate: new Date(nextDate),
+          expectedDate: nextDate,
           status: 'pending',
           targetAccountId: source.targetAccountId,
-          createdAt: new Date(),
+          ownerId: source.ownerId,
         });
       }
     } catch (error) {
@@ -3061,6 +3058,7 @@ const Dashboard = () => {
               transactions={transactions}
               accounts={accounts}
               categories={categories}
+              members={household?.members}
               onAddTransaction={() => {
                 setEditingTransaction(null);
                 setIsTxModalOpen(true);
@@ -3107,6 +3105,7 @@ const Dashboard = () => {
           {activeTab === 'groups' && (
             <SharedBudgets 
               householdId={household?.id || ''}
+              showNotification={showNotification}
             />
           )}
 
@@ -3159,9 +3158,9 @@ const Dashboard = () => {
                 </h3>
                 <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl mb-6">
                   <p className="text-sm text-emerald-200/80 leading-relaxed">
-                    <strong>Güvenlik Notu:</strong> FinansHane, verilerinizi merkezi bir sunucuda değil, tarayıcınızın 
-                    <strong> IndexedDB</strong> veritabanında yerel olarak saklar. Tüm hassas veriler cihazınızda 
-                    şifrelenmiş olarak tutulur. 2026 Türkiye KVKK standartlarına tam uyumludur.
+                    <strong>Güvenlik Notu:</strong> FinansHane, verilerinizi güvenli bir bulut altyapısında (Firebase) 
+                    şifrelenmiş olarak saklar ve hızlı erişim için yerel olarak önbelleğe alır. Tüm hassas verileriniz 
+                    2026 Türkiye KVKK standartlarına tam uyumlu şekilde korunmaktadır.
                   </p>
                 </div>
                 <div className="space-y-4">
@@ -3197,7 +3196,7 @@ const Dashboard = () => {
                       <p className="text-xs text-zinc-300">Tüm verileriniz kalıcı olarak cihazınızdan silinecektir.</p>
                     </div>
                     <button 
-                      onClick={handleDeleteAllData}
+                      onClick={() => setIsDeleteAllDataConfirmOpen(true)}
                       className="p-3 bg-rose-500/10 hover:bg-rose-500 hover:text-white rounded-xl transition-all text-rose-500"
                     >
                       <Trash2 className="w-5 h-5" />
@@ -3228,7 +3227,11 @@ const Dashboard = () => {
                 </div>
 
                 {household && user && (
-                  <HouseholdMembers household={household} currentUserId={user.uid} />
+                  <HouseholdMembers 
+                    household={household} 
+                    currentUserId={user.uid} 
+                    showNotification={showNotification}
+                  />
                 )}
               </div>
 
@@ -3350,43 +3353,13 @@ const Dashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* Confirm Dialog */}
-        <AnimatePresence>
-          {confirmDialog && (
-            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-zinc-900 border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl"
-              >
-                <div className="flex items-center gap-4 text-rose-500 mb-6">
-                  <div className="p-3 bg-rose-500/10 rounded-2xl">
-                    <Trash2 className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white">Emin misiniz?</h3>
-                </div>
-                <p className="text-zinc-300 mb-8 leading-relaxed">
-                  {confirmDialog.message}
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setConfirmDialog(null)}
-                    className="flex-1 px-6 py-3 rounded-2xl bg-zinc-800 text-zinc-300 font-bold hover:bg-zinc-700 transition-colors"
-                  >
-                    Vazgeç
-                  </button>
-                  <button
-                    onClick={confirmDialog.onConfirm}
-                    className="flex-1 px-6 py-3 rounded-2xl bg-rose-500 text-white font-bold hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20"
-                  >
-                    Evet, Sil
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        <ConfirmModal 
+          isOpen={isDeleteAllDataConfirmOpen}
+          onClose={() => setIsDeleteAllDataConfirmOpen(false)}
+          onConfirm={handleDeleteAllData}
+          title="Tüm Verileri Sil?"
+          message="Tüm verileriniz kalıcı olarak silinecektir. Bu işlem geri alınamaz. Emin misiniz?"
+        />
       </main>
     </div>
   );

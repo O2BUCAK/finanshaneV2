@@ -127,11 +127,11 @@ export const Reports: React.FC<ReportsProps> = ({
   }, [transactions, accounts, period, convertToTRY]);
 
   return (
-    <div className="space-y-8 pb-12">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Nakit Akış Analizi</h2>
-          <p className="text-muted-foreground font-medium mt-1">Gelir ve giderlerinizin görsel akış diyagramı</p>
+          <h2 className="text-2xl font-black tracking-tighter text-foreground">Nakit Akış Analizi</h2>
+          <p className="text-muted-foreground text-xs font-medium mt-0.5">Gelir ve giderlerinizin görsel akış diyagramı</p>
         </div>
         
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -194,9 +194,9 @@ export const Reports: React.FC<ReportsProps> = ({
         </div>
       </div>
 
-      <div className="corporate-card p-8 lg:p-12 min-h-[600px] flex items-center justify-center relative overflow-hidden">
+      <div className="corporate-card p-6 min-h-[500px] flex items-center justify-center relative overflow-hidden">
         {sankeyData.nodes.length > 0 ? (
-          <div className="w-full h-[500px]">
+          <div className="w-full h-[400px]">
             <SankeyChart 
               data={sankeyData} 
               formatCurrency={(val) => formatWithEquivalent(val, 'TRY')}
@@ -204,11 +204,11 @@ export const Reports: React.FC<ReportsProps> = ({
           </div>
         ) : (
           <div className="text-center">
-            <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
-              <PieChart className="w-8 h-8 text-muted-foreground/50" />
+            <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
+              <PieChart className="w-6 h-6 text-muted-foreground/50" />
             </div>
-            <p className="text-lg font-bold text-foreground mb-2">Yeterli veri bulunmuyor</p>
-            <p className="text-sm text-muted-foreground font-medium">Gelir ve gider işlemlerinizi ekledikçe grafik burada oluşacaktır.</p>
+            <p className="text-base font-bold text-foreground mb-1">Yeterli veri bulunmuyor</p>
+            <p className="text-xs text-muted-foreground font-medium">Gelir ve gider işlemlerinizi ekledikçe grafik burada oluşacaktır.</p>
           </div>
         )}
       </div>
