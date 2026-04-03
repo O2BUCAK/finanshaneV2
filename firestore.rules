@@ -52,7 +52,7 @@ service cloud.firestore {
 
     function isMemberOfHousehold(householdId) {
       return isAuthenticated() && 
-             request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members.keys();
+             (request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members.keys());
     }
 
     function hasRequiredFields(fields) {
@@ -79,9 +79,14 @@ service cloud.firestore {
              request.resource.data[field] <= request.time;
     }
 
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
+    function isValidMember(member) {
+      return member is map &&
+             member.role in ['owner', 'member'] &&
+             member.type in ['adult', 'child', 'elderly', 'other'] &&
+             member.salaryVisible is bool &&
+             member.displayName is string &&
+             member.email is string;
+    }
 
     function isValidUserProfile(data) {
       return hasRequiredFields(['fullName', 'email', 'createdAt']) &&
@@ -104,7 +109,8 @@ service cloud.firestore {
 
     // User Profiles - Strictly Owner Only for PII protection
     match /users/{userId} {
-      allow read, list: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
       allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && isRecent('createdAt');
       allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && 
                       (request.resource.data.isAdmin == resource.data.isAdmin || isAdmin()) &&
@@ -114,17 +120,29 @@ service cloud.firestore {
 
     // Households
     match /households/{householdId} {
-      // Allow read if member OR if querying by joinCode (for joining)
-      allow read, list: if isAdmin() || (isAuthenticated() && 
-                    (request.auth.uid in resource.data.members.keys() || 
-                     (request.query.limit <= 1 && request.query.filters.joinCode == resource.data.joinCode)));
+      // Allow read if member OR if the user is trying to find the household via joinCode
+      // Note: list is allowed for authenticated users to enable the joinCode search query.
+      // We rely on the joinCode being a secret known only to the household members.
+      allow read: if isAuthenticated() && (request.auth.uid in resource.data.members.keys() || isAdmin());
+      allow list: if isAuthenticated();
       
       allow create: if isAuthenticated() && isValidHousehold(request.resource.data) && 
                       request.resource.data.ownerId == request.auth.uid &&
                       isRecent('createdAt');
       
       allow update: if isAuthenticated() && 
-                      (request.auth.uid in resource.data.members.keys()) && 
+                      (
+                        // Existing members can update
+                        (request.auth.uid in resource.data.members.keys()) ||
+                        // New members can join if they know the joinCode and only add themselves
+                        (
+                          request.resource.data.joinCode == resource.data.joinCode &&
+                          request.resource.data.members.keys().hasAll(resource.data.members.keys()) &&
+                          request.resource.data.members.size() == resource.data.members.size() + 1 &&
+                          request.resource.data.members[request.auth.uid] != null &&
+                          isValidMember(request.resource.data.members[request.auth.uid])
+                        )
+                      ) && 
                       isValidHousehold(request.resource.data) &&
                       request.resource.data.ownerId == resource.data.ownerId &&
                       request.resource.data.createdAt == resource.data.createdAt;

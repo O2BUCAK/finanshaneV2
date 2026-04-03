@@ -2110,25 +2110,50 @@ const JoinOrCreateHousehold = () => {
         email: user.email || ''
       };
 
-      await updateDoc(doc(db, 'households', householdId), {
-        [`members.${user.uid}`]: memberData
-      });
+      try {
+        await updateDoc(doc(db, 'households', householdId), {
+          [`members.${user.uid}`]: memberData
+        });
+      } catch (err: any) {
+        console.error('Household update error:', err);
+        if (err.code === 'permission-denied') {
+          setError('Hane güncellenemedi. Lütfen hane sahibi ile iletişime geçin.');
+        } else {
+          throw err;
+        }
+        return;
+      }
 
       // Update user profile in Firestore
-      await updateDoc(doc(db, 'users', user.uid), {
-        activeHouseholdId: householdId
-      });
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          activeHouseholdId: householdId
+        });
+      } catch (err: any) {
+        console.error('User profile update error:', err);
+        if (err.code === 'permission-denied') {
+          setError('Profil güncellenemedi. Lütfen tekrar deneyin.');
+        } else {
+          throw err;
+        }
+        return;
+      }
 
       // SYNC TO LOCALDB
-      const updatedHouseholdDoc = await getDoc(doc(db, 'households', householdId));
-      if (updatedHouseholdDoc.exists()) {
-        await localDB.households.put({ ...updatedHouseholdDoc.data(), id: householdId } as Household);
+      try {
+        const updatedHouseholdDoc = await getDoc(doc(db, 'households', householdId));
+        if (updatedHouseholdDoc.exists()) {
+          await localDB.households.put({ ...updatedHouseholdDoc.data(), id: householdId } as Household);
+        }
+        await localDB.users.update(user.uid, { activeHouseholdId: householdId });
+      } catch (err: any) {
+        console.error('LocalDB sync error:', err);
+        // This is not a fatal error for the UI, but we should log it
       }
-      await localDB.users.update(user.uid, { activeHouseholdId: householdId });
 
     } catch (err: any) {
       console.error('Join error:', err);
-      setError('Bir hata oluştu. Lütfen tekrar deneyin.');
+      setError('Bir hata oluştu: ' + (err.message || 'Lütfen tekrar deneyin.'));
     } finally {
       setLoading(false);
     }
