@@ -1,5 +1,5 @@
 {
-  "name": "FinansHane - Ev Finansal Yönetim Sistemi",
-  "description": "Çift kayıtlı muhasebe tabanlı, aile içi borç takibi ve bütçe planlama uygulaması.",
+  "name": "FinansHane | Aile ve Ev Bütçesi Takip Uygulaması",
+  "description": "FinansHane ile ev bütçenizi kolayca yönetin. Aile içi borç takibi, gelir-gider analizi, bütçe planlama ve çift kayıtlı muhasebe sistemiyle finansal kontrolünüzü elinize alın.",
   "requestFramePermissions": []
 }

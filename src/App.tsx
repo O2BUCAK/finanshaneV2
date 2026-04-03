@@ -1825,8 +1825,8 @@ const Login = () => {
           <div className="inline-flex p-4 bg-emerald-500/10 rounded-3xl mb-4">
             <Wallet className="w-12 h-12 text-emerald-500" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">FinansHane</h1>
-          <p className="text-zinc-400">Verileriniz cihazınızda şifrelenmiş olarak saklanır.</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">FinansHane | Aile Bütçe Takip</h1>
+          <p className="text-zinc-400">Güvenli ve şifreli ev finansal yönetim sistemi.</p>
         </div>
 
         <div className="space-y-6 bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 shadow-2xl">
@@ -2839,7 +2839,7 @@ const Dashboard = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight">FinansHane</h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Kurumsal Finans</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Hane Ekonomi Yönetimi</p>
             </div>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 hover:bg-secondary rounded-lg">
