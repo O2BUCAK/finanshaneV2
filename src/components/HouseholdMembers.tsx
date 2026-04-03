@@ -20,12 +20,40 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
   const [selectedRealMemberId, setSelectedRealMemberId] = useState<string | null>(null);
   const [selectedVirtualMemberId, setSelectedVirtualMemberId] = useState<string | null>(null);
 
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [refreshingCode, setRefreshingCode] = useState(false);
+
   const isOwner = household.ownerId === currentUserId;
 
   const handleCopyCode = () => {
     if (household.joinCode) {
       navigator.clipboard.writeText(household.joinCode);
-      alert('Katılım kodu kopyalandı!');
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    }
+  };
+
+  const handleRefreshCode = async () => {
+    if (!isOwner || refreshingCode) return;
+    if (!window.confirm('Yeni bir katılım kodu oluşturmak istediğinize emin misiniz? Eski kod artık çalışmayacaktır.')) return;
+
+    setRefreshingCode(true);
+    try {
+      const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      
+      // Update Firestore
+      const { db, doc, updateDoc } = await import('../lib/firebase');
+      await updateDoc(doc(db, 'households', household.id), { joinCode: newCode });
+      
+      // Update LocalDB
+      await localDB.households.update(household.id, { joinCode: newCode });
+      
+      alert('Yeni katılım kodu oluşturuldu.');
+    } catch (error) {
+      console.error('Error refreshing join code:', error);
+      alert('Kod yenilenirken bir hata oluştu.');
+    } finally {
+      setRefreshingCode(false);
     }
   };
 
@@ -149,13 +177,23 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-xl">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Katılım Kodu:</span>
               <span className="text-sm font-mono font-bold text-primary">{household.joinCode}</span>
-              <button 
-                onClick={handleCopyCode}
-                className="p-1 hover:bg-muted rounded transition-colors"
-                title="Kodu Kopyala"
-              >
-                <Check className="w-3 h-3 text-muted-foreground" />
-              </button>
+              <div className="flex items-center gap-1 ml-2 border-l border-border pl-2">
+                <button 
+                  onClick={handleCopyCode}
+                  className="p-1.5 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-primary"
+                  title="Kodu Kopyala"
+                >
+                  {copySuccess ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Mail className="w-3.5 h-3.5" />}
+                </button>
+                <button 
+                  onClick={handleRefreshCode}
+                  disabled={refreshingCode}
+                  className="p-1.5 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-primary disabled:opacity-50"
+                  title="Kodu Yenile"
+                >
+                  <ArrowRightLeft className={`w-3.5 h-3.5 ${refreshingCode ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
           )}
           {isOwner && (
@@ -172,8 +210,27 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
 
       {isOwner && household.joinCode && (
         <div className="md:hidden p-4 bg-card border border-border rounded-2xl flex items-center justify-between">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Katılım Kodu</span>
-          <span className="text-lg font-mono font-bold text-primary tracking-widest">{household.joinCode}</span>
+          <div>
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Katılım Kodu</span>
+            <span className="text-lg font-mono font-bold text-primary tracking-widest">{household.joinCode}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleCopyCode}
+              className="p-2 bg-muted rounded-xl transition-colors text-muted-foreground"
+              title="Kodu Kopyala"
+            >
+              {copySuccess ? <Check className="w-5 h-5 text-emerald-500" /> : <Mail className="w-5 h-5" />}
+            </button>
+            <button 
+              onClick={handleRefreshCode}
+              disabled={refreshingCode}
+              className="p-2 bg-muted rounded-xl transition-colors text-muted-foreground disabled:opacity-50"
+              title="Kodu Yenile"
+            >
+              <ArrowRightLeft className={`w-5 h-5 ${refreshingCode ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
       )}
 

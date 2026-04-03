@@ -61,8 +61,9 @@ export const useExchangeRates = (isPrivacyMode: boolean = false) => {
     return amount;
   };
 
-  const formatWithEquivalent = (amount: number, currency: string) => {
-    if (isPrivacyMode) return '••••••';
+  const formatWithEquivalent = (amount: number, currency: string, overridePrivacy?: boolean) => {
+    const effectivePrivacy = overridePrivacy !== undefined ? overridePrivacy : isPrivacyMode;
+    if (effectivePrivacy) return '••••••';
 
     const formattedOriginal = new Intl.NumberFormat('tr-TR', { 
       style: 'currency', 

@@ -7,6 +7,8 @@ import {
   Household, 
   IncomeSource, 
   ExpectedIncome, 
+  ExpenseSource,
+  ExpectedExpense,
   PlannedExpense,
   SharedBudget
 } from './types';
@@ -19,6 +21,8 @@ export class AppDatabase extends Dexie {
   households!: Table<Household>;
   incomeSources!: Table<IncomeSource>;
   expectedIncomes!: Table<ExpectedIncome>;
+  expenseSources!: Table<ExpenseSource>;
+  expectedExpenses!: Table<ExpectedExpense>;
   plannedExpenses!: Table<PlannedExpense>;
   sharedBudgets!: Table<SharedBudget>;
   auditLogs!: Table<{ id: string; timestamp: Date; action: string; userId: string; details?: string }>;
@@ -33,6 +37,8 @@ export class AppDatabase extends Dexie {
       households: 'id, name, ownerId',
       incomeSources: 'id, name, ownerId',
       expectedIncomes: 'id, sourceId, ownerId, expectedDate, status',
+      expenseSources: 'id, name, ownerId',
+      expectedExpenses: 'id, sourceId, ownerId, expectedDate, status',
       plannedExpenses: 'id, ownerId, dueDate, status',
       sharedBudgets: 'id, name, joinCode',
       auditLogs: 'id, timestamp, action, userId'

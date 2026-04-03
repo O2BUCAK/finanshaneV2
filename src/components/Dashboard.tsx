@@ -2,11 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { 
   TrendingUp, TrendingDown, Wallet, Building2, Bitcoin, Gift, 
   Calendar, ArrowUpRight, ArrowDownLeft, Plus, Bus, ArrowRightLeft,
-  GripHorizontal, Eye, EyeOff, PieChart
+  GripHorizontal, Eye, EyeOff, PieChart, X
 } from 'lucide-react';
 import { motion, Reorder } from 'framer-motion';
 import { Account, Transaction, IncomeSource, ExpectedIncome, PlannedExpense } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
+import { MarketDataWidget } from './MarketDataWidget';
 
 interface DashboardProps {
   householdId?: string;
@@ -70,6 +71,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const defaultLayout = [
     { id: 'master_widget', visible: true },
+    { id: 'market_data', visible: true },
+    { id: 'credit_cards', visible: true },
     { id: 'quick_actions', visible: true },
     { id: 'branch_distribution', visible: true },
     { id: 'cash_flow_radar', visible: true },
@@ -77,7 +80,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
   ];
 
   const [layout, setLayout] = useState(defaultLayout);
+  const [toggledPrivacy, setToggledPrivacy] = useState<Set<string>>(new Set());
   const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
+
+  const toggleLocalPrivacy = (id: string) => {
+    setToggledPrivacy(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const isItemHidden = (id: string) => {
+    return isPrivacyMode ? !toggledPrivacy.has(id) : toggledPrivacy.has(id);
+  };
 
   // Calculations
   const totalAssets = accounts.filter(a => a.type === 'asset').reduce((sum, a) => {
@@ -106,6 +123,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const bankBalance = accounts.filter(a => a.branch === 'banking' && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
   const cryptoBalance = accounts.filter(a => a.branch === 'crypto' && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
   const socialBalance = accounts.filter(a => a.branch === 'social_gift' && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
+
+  const creditCardAccounts = useMemo(() => 
+    accounts.filter(a => a.subType === 'credit_card'),
+    [accounts]
+  );
+
+  const totalCreditCardDebt = useMemo(() => 
+    creditCardAccounts.reduce((sum, a) => sum + convertToTRY(a.balance, a.currency || 'TRY'), 0),
+    [creditCardAccounts, convertToTRY]
+  );
+
+  const totalCreditLimit = useMemo(() => 
+    creditCardAccounts.reduce((sum, a) => sum + convertToTRY(a.creditLimit || 0, a.currency || 'TRY'), 0),
+    [creditCardAccounts, convertToTRY]
+  );
 
   // Cash flow radar (Current month)
   const currentMonth = new Date().getMonth();
@@ -194,21 +226,54 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const renderModule = (id: string) => {
+    const isVisible = layout.find(i => i.id === id)?.visible;
+    if (!isVisible) return null;
+
+    const moduleHeader = (title: string, icon: React.ReactNode) => (
+      <div className="flex justify-between items-start mb-6 relative z-10">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          {icon}
+          <span className="font-semibold uppercase tracking-wider text-xs">{title}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleLocalPrivacy(id);
+            }}
+            className={`p-1.5 border border-border/50 rounded-lg transition-all ${
+              isItemHidden(id)
+                ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20'
+                : 'text-muted-foreground/50 hover:text-foreground hover:bg-zinc-800'
+            }`}
+            title={isItemHidden(id) ? 'Göster' : 'Gizle'}
+          >
+            {isItemHidden(id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          </button>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleModuleVisibility(id);
+            }}
+            className="p-1.5 hover:bg-zinc-800 rounded-lg text-muted-foreground/50 hover:text-foreground transition-all"
+            title="Kapat"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+      </div>
+    );
+
     switch (id) {
       case 'master_widget':
         return (
           <div className="corporate-card p-8 relative group overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-3xl" />
-            <div className="flex justify-between items-start mb-6 relative z-10">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Wallet className="w-5 h-5" />
-                <span className="font-semibold uppercase tracking-wider text-xs">Toplam Varlık Özeti</span>
-              </div>
-              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
+            {moduleHeader('Toplam Varlık Özeti', <Wallet className="w-5 h-5" />)}
             <div className="flex items-end gap-4 relative z-10">
               <h2 className="text-5xl font-bold tracking-tight text-foreground">
-                {formatWithEquivalent(netWorth, 'TRY')}
+                {formatWithEquivalent(netWorth, 'TRY', isItemHidden('master_widget'))}
               </h2>
               <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-bold mb-1.5 ${netWorthChange >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
                 {netWorthChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
@@ -219,37 +284,118 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         );
 
+      case 'market_data':
+        return (
+          <div className="relative group">
+            <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleLocalPrivacy(id);
+                }}
+                className={`p-1.5 border border-border/50 rounded-lg transition-all ${
+                  isItemHidden(id)
+                    ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20'
+                    : 'bg-zinc-900/80 backdrop-blur-sm text-muted-foreground/50 hover:text-foreground hover:bg-zinc-800'
+                }`}
+                title={isItemHidden(id) ? 'Göster' : 'Gizle'}
+              >
+                {isItemHidden(id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleModuleVisibility(id);
+                }}
+                className="p-1.5 bg-zinc-900/80 backdrop-blur-sm border border-border/50 hover:bg-zinc-800 rounded-lg text-muted-foreground/50 hover:text-foreground transition-all"
+                title="Kapat"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab" />
+            </div>
+            <MarketDataWidget />
+          </div>
+        );
+
+      case 'credit_cards':
+        if (creditCardAccounts.length === 0) return null;
+        return (
+          <div className="corporate-card p-8 relative group">
+            {moduleHeader('Kredi Kartları Özeti', <Wallet className="w-5 h-5" />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Toplam Borç</p>
+                <p className="text-2xl font-bold text-rose-500">{formatWithEquivalent(totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
+              </div>
+              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Toplam Limit</p>
+                <p className="text-2xl font-bold text-foreground">{formatWithEquivalent(totalCreditLimit, 'TRY', isItemHidden('credit_cards'))}</p>
+              </div>
+              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Kullanılabilir Limit</p>
+                <p className="text-2xl font-bold text-emerald-500">{formatWithEquivalent(totalCreditLimit - totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
+              </div>
+              <div className="p-6 rounded-2xl bg-secondary/50 border border-border">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Limit Doluluk</p>
+                <div className="flex items-end gap-2">
+                  <p className="text-2xl font-bold text-foreground">
+                    {totalCreditLimit > 0 ? ((totalCreditCardDebt / totalCreditLimit) * 100).toFixed(1) : 0}%
+                  </p>
+                  <div className="flex-1 h-2 bg-zinc-800 rounded-full mb-2 overflow-hidden">
+                    <div 
+                      className="h-full bg-rose-500 rounded-full" 
+                      style={{ width: `${Math.min((totalCreditCardDebt / (totalCreditLimit || 1)) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {creditCardAccounts.map(acc => (
+                <div key={acc.id} className="p-4 rounded-2xl bg-zinc-950/30 border border-border flex justify-between items-center">
+                  <div>
+                    <p className="font-bold text-sm text-foreground">{acc.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">Kesim Günü: {acc.statementDay}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-rose-500">{formatWithEquivalent(acc.balance, acc.currency || 'TRY', isItemHidden('credit_cards'))}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      Asgari: {formatWithEquivalent(acc.balance * ((acc.creditLimit || 0) >= 25000 ? 0.4 : 0.2), acc.currency || 'TRY', isItemHidden('credit_cards'))}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
       case 'branch_distribution':
         return (
           <div className="corporate-card p-8 relative group">
-            <div className="flex justify-between items-start mb-8">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <PieChart className="w-5 h-5" />
-                <span className="font-semibold uppercase tracking-wider text-xs">Varlık Dağılımı</span>
-              </div>
-              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
+            {moduleHeader('Varlık Dağılımı', <PieChart className="w-5 h-5" />)}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
                 <div className="flex items-center gap-2 text-blue-500 mb-3">
                   <Building2 className="w-5 h-5" />
                   <span className="font-bold text-xs uppercase tracking-wide">Bankalar</span>
                 </div>
-                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(bankBalance, 'TRY')}</span>
+                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(bankBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
               </button>
               <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
                 <div className="flex items-center gap-2 text-orange-500 mb-3">
                   <Bitcoin className="w-5 h-5" />
                   <span className="font-bold text-xs uppercase tracking-wide">Kripto</span>
                 </div>
-                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(cryptoBalance, 'TRY')}</span>
+                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(cryptoBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
               </button>
               <button className="flex flex-col p-6 rounded-2xl bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left group/item">
                 <div className="flex items-center gap-2 text-purple-500 mb-3">
                   <Gift className="w-5 h-5" />
                   <span className="font-bold text-xs uppercase tracking-wide">Sosyal/Hediye</span>
                 </div>
-                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(socialBalance, 'TRY')}</span>
+                <span className="text-2xl font-bold text-foreground group-hover/item:text-primary transition-colors">{formatWithEquivalent(socialBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
               </button>
             </div>
           </div>
@@ -258,13 +404,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'payment_calendar':
         return (
           <div className="corporate-card p-8 relative group">
-            <div className="flex justify-between items-start mb-8">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Calendar className="w-5 h-5" />
-                <span className="font-semibold uppercase tracking-wider text-xs">Ödeme Takvimi</span>
-              </div>
-              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
+            {moduleHeader('Ödeme Takvimi', <Calendar className="w-5 h-5" />)}
             <div className="space-y-3">
               {calendarItems.length > 0 ? calendarItems.map(item => {
                 const colorClass = getPaymentStatusColor(item.date, item.status);
@@ -281,7 +421,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div className="text-right">
                       <p className={`font-bold ${item.type === 'income' ? 'text-emerald-500' : 'text-foreground'}`}>
                         {item.type === 'income' ? '+' : '-'}
-                        {formatWithEquivalent(item.amount, item.currency)}
+                        {formatWithEquivalent(item.amount, item.currency, isItemHidden('payment_calendar'))}
                       </p>
                     </div>
                   </div>
@@ -298,18 +438,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'cash_flow_radar':
         return (
           <div className="corporate-card p-8 relative group">
-            <div className="flex justify-between items-start mb-8">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <TrendingUp className="w-5 h-5" />
-                <span className="font-semibold uppercase tracking-wider text-xs">Nakit Akış Radarı (Bu Ay)</span>
-              </div>
-              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
+            {moduleHeader('Nakit Akış Radarı (Bu Ay)', <TrendingUp className="w-5 h-5" />)}
             <div className="space-y-6">
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-muted-foreground font-medium">Toplam Girdi</span>
-                  <span className="text-emerald-500 font-bold">{formatWithEquivalent(totalIncome, 'TRY')}</span>
+                  <span className="text-emerald-500 font-bold">{formatWithEquivalent(totalIncome, 'TRY', isItemHidden('cash_flow_radar'))}</span>
                 </div>
                 <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
                   <motion.div 
@@ -322,7 +456,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-muted-foreground font-medium">Toplam Gider</span>
-                  <span className="text-destructive font-bold">{formatWithEquivalent(totalExpense, 'TRY')}</span>
+                  <span className="text-destructive font-bold">{formatWithEquivalent(totalExpense, 'TRY', isItemHidden('cash_flow_radar'))}</span>
                 </div>
                 <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
                   <motion.div 
@@ -334,7 +468,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="pt-6 border-t border-border">
                 <p className="text-sm text-muted-foreground font-medium">
-                  Bu ay harcayabileceğin <span className="text-foreground font-bold">{formatWithEquivalent(Math.max(remainingBudget, 0), 'TRY')}</span> daha var.
+                  Bu ay harcayabileceğin <span className="text-foreground font-bold">{formatWithEquivalent(Math.max(remainingBudget, 0), 'TRY', isItemHidden('cash_flow_radar'))}</span> daha var.
                 </p>
               </div>
             </div>
@@ -344,13 +478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       case 'quick_actions':
         return (
           <div className="corporate-card p-8 relative group">
-            <div className="flex justify-between items-start mb-8">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Plus className="w-5 h-5" />
-                <span className="font-semibold uppercase tracking-wider text-xs">Hızlı İşlemler</span>
-              </div>
-              <GripHorizontal className="w-5 h-5 text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
+            {moduleHeader('Hızlı İşlemler', <Plus className="w-5 h-5" />)}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <button onClick={onAddIncome} className="flex flex-col items-center justify-center p-6 rounded-2xl bg-emerald-500/5 text-emerald-500 border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all gap-3 group/btn">
                 <Plus className="w-7 h-7 group-hover/btn:scale-110 transition-transform" />
@@ -376,6 +504,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return null;
     }
   };
+
+  const hiddenModules = layout.filter(item => !item.visible);
 
   return (
     <div className="space-y-8 pb-12">
@@ -415,19 +545,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               ))}
             </div>
           )}
-
-          <div className="flex gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
-            {layout.map(item => (
-              <button
-                key={`toggle-${item.id}`}
-                onClick={() => toggleModuleVisibility(item.id)}
-                className={`p-2 rounded-xl transition-all ${item.visible ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                title={`${item.id} modülünü ${item.visible ? 'gizle' : 'göster'}`}
-              >
-                {item.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -438,6 +555,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </Reorder.Item>
         ))}
       </Reorder.Group>
+
+      {hiddenModules.length > 0 && (
+        <div className="pt-12 border-t border-border">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Gizlenen Modüller</p>
+          <div className="flex flex-wrap gap-3">
+            {hiddenModules.map(item => (
+              <button
+                key={`restore-${item.id}`}
+                onClick={() => toggleModuleVisibility(item.id)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:border-primary/30 text-muted-foreground hover:text-foreground transition-all group"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-wide">
+                  {item.id === 'master_widget' && 'Varlık Özeti'}
+                  {item.id === 'market_data' && 'Piyasa Verileri'}
+                  {item.id === 'credit_cards' && 'Kredi Kartları'}
+                  {item.id === 'branch_distribution' && 'Varlık Dağılımı'}
+                  {item.id === 'payment_calendar' && 'Ödeme Takvimi'}
+                  {item.id === 'cash_flow_radar' && 'Nakit Akışı'}
+                  {item.id === 'quick_actions' && 'Hızlı İşlemler'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

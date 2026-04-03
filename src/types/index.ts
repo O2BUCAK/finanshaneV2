@@ -3,11 +3,12 @@ export type AccountType = 'asset' | 'liability' | 'income' | 'expense';
 export type AccountBranch = 'banking' | 'crypto' | 'social_gift';
 
 export type AccountSubType = 
-  | 'liquidity_deposit' | 'investment' | 'credit_debt' // Banking
+  | 'liquidity_deposit' | 'investment' | 'credit_debt' | 'credit_card' // Banking
   | 'global_exchange' | 'local_exchange' // Crypto
   | 'transport' | 'food' | 'corporate_gift'; // Social/Gift
 
 export type IncomeFlowType = 'fixed' | 'variable' | 'spot';
+export type ExpenseFlowType = 'fixed' | 'variable' | 'subscription';
 
 export interface IncomeSource {
   id: string;
@@ -39,6 +40,36 @@ export interface ExpectedIncome {
   transactionId?: string;
   isRetroactive?: boolean;
   parentSourceId?: string; // For retroactive differences linked to a source
+  createdAt: Date;
+}
+
+export interface ExpenseSource {
+  id: string;
+  name: string;
+  ownerId: string;
+  flowType: ExpenseFlowType;
+  amount: number;
+  currency: string;
+  sourceAccountId: string;
+  categoryId: string;
+  periodDay?: number;
+  isArchived?: boolean;
+  status?: 'active' | 'suspended';
+  createdAt: Date;
+}
+
+export interface ExpectedExpense {
+  id: string;
+  ownerId: string;
+  sourceId: string;
+  sourceName: string;
+  amount: number;
+  currency: string;
+  expectedDate: Date;
+  status: 'pending' | 'paid' | 'cancelled';
+  sourceAccountId: string;
+  categoryId: string;
+  transactionId?: string;
   createdAt: Date;
 }
 
@@ -107,12 +138,19 @@ export interface Account {
   isCreditCard?: boolean;
   creditLimit?: number;
   statementDay?: number;
+  statementBalance?: number; // Ekstre Borcu
+  minimumPayment?: number; // Asgari Tutar
   isArchived?: boolean;
   depositDetails?: {
     isTimeDeposit: boolean;
     interestRate?: number;
     period?: 'daily' | 'monthly' | 'yearly';
     maturityDate?: string;
+  };
+  apiConfig?: {
+    apiKey: string;
+    apiSecret: string;
+    lastSync?: string;
   };
   points?: {
     name: string;

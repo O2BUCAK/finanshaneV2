@@ -138,9 +138,23 @@ service cloud.firestore {
       
       // Specific validation for subcollections
       match /accounts/{accountId} {
-        allow create, update: if isMemberOfHousehold(householdId) && 
-                                hasRequiredFields(['name', 'ownerId', 'type', 'branch', 'balance', 'currency', 'createdAt']) &&
-                                validString('name', 1, 100);
+        function isValidAccount(data) {
+          return hasRequiredFields(['name', 'ownerId', 'type', 'branch', 'balance', 'currency', 'createdAt']) &&
+                 data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+                 data.type in ['asset', 'liability'] &&
+                 data.branch in ['banking', 'crypto', 'social_gift'] &&
+                 data.balance is number &&
+                 (!('isCreditCard' in data) || data.isCreditCard is bool) &&
+                 (!('creditLimit' in data) || data.creditLimit is number) &&
+                 (!('statementDay' in data) || data.statementDay is int) &&
+                 (!('statementBalance' in data) || data.statementBalance is number) &&
+                 (!('minimumPayment' in data) || data.minimumPayment is number);
+        }
+
+        allow create: if isMemberOfHousehold(householdId) && isValidAccount(request.resource.data) && isRecent('createdAt');
+        allow update: if isMemberOfHousehold(householdId) && isValidAccount(request.resource.data) && 
+                        request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isMemberOfHousehold(householdId);
       }
 
       match /transactions/{transactionId} {

@@ -51,6 +51,8 @@
         "isCreditCard": { "type": "boolean" },
         "creditLimit": { "type": "number" },
         "statementDay": { "type": "number" },
+        "statementBalance": { "type": "number" },
+        "minimumPayment": { "type": "number" },
         "isArchived": { "type": "boolean" },
         "depositDetails": { "type": "object" },
         "points": { "type": "array", "items": { "type": "object" } },

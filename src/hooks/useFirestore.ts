@@ -14,6 +14,8 @@ export function useCollection<T>(
     if (p.includes('categories')) return 'categories';
     if (p.includes('incomeSources')) return 'incomeSources';
     if (p.includes('expectedIncomes')) return 'expectedIncomes';
+    if (p.includes('expenseSources')) return 'expenseSources';
+    if (p.includes('expectedExpenses')) return 'expectedExpenses';
     if (p.includes('plannedExpenses')) return 'plannedExpenses';
     if (p.includes('sharedBudgets')) return 'sharedBudgets';
     if (p.includes('users')) return 'users';

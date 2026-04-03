@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Bot,
   Calendar,
+  Calculator,
   FileText,
   Tag,
   ChevronDown,
@@ -41,7 +42,8 @@ import {
   EyeOff,
   Shield,
   Sun,
-  Moon
+  Moon,
+  Clock
 } from 'lucide-react';
 import { localDB } from './db';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -63,7 +65,8 @@ import { useCollection } from './hooks/useFirestore';
 import { useExchangeRates } from './hooks/useExchangeRates';
 import { useAssetPrices } from './hooks/useAssetPrices';
 import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, createInstallmentTransactions } from './lib/ledger';
-import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense, Household, UserProfile } from './types';
+import { createExpenseSource } from './lib/expenseSources';
+import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense, Household, UserProfile, ExpenseSource } from './types';
 import { 
   db, 
   doc, 
@@ -84,6 +87,10 @@ import { SharedBudgets } from './components/SharedBudgets';
 import { HouseholdMembers } from './components/HouseholdMembers';
 import { PlannedExpenses } from './components/PlannedExpenses';
 import { AdminPanel } from './components/AdminPanel';
+import { AccountsView } from './components/AccountsView';
+import { SubscriptionsView } from './components/SubscriptionsView';
+import { IncomeView } from './components/IncomeView';
+import { ExpenseView } from './components/ExpenseView';
 
 // --- Constants ---
 
@@ -108,6 +115,38 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
   const [targetAccountId, setTargetAccountId] = useState('');
   const [periodDay, setPeriodDay] = useState('1');
   const [loading, setLoading] = useState(false);
+
+  // Meal Allowance Calculator States
+  const [showMealCalculator, setShowMealCalculator] = useState(false);
+  const [dailyMealRate, setDailyMealRate] = useState('');
+  const [workingDaysPerWeek, setWorkingDaysPerWeek] = useState<5 | 6>(5);
+  const [mealMonth, setMealMonth] = useState(new Date().getMonth());
+  const [mealYear, setMealYear] = useState(new Date().getFullYear());
+
+  const calculateMealAllowance = () => {
+    const rate = parseFloat(dailyMealRate.replace(',', '.'));
+    if (isNaN(rate) || rate <= 0) {
+      alert('Lütfen geçerli bir günlük ücret giriniz.');
+      return;
+    }
+
+    let count = 0;
+    const date = new Date(mealYear, mealMonth, 1);
+    while (date.getMonth() === mealMonth) {
+      const day = date.getDay();
+      if (workingDaysPerWeek === 5) {
+        if (day !== 0 && day !== 6) count++;
+      } else {
+        if (day !== 0) count++;
+      }
+      date.setDate(date.getDate() + 1);
+    }
+
+    const total = rate * count;
+    setAmount(total.toString());
+    setShowMealCalculator(false);
+    if (!name) setName('Yemek Parası');
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -134,6 +173,13 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !householdId) return;
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      alert('Lütfen geçerli bir tutar giriniz.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -141,11 +187,11 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
         name,
         ownerId: ownerId || user.uid,
         flowType,
-        amount: parseFloat(amount),
+        amount: parsedAmount,
         currency,
         targetAccountId,
         periodDay: flowType !== 'spot' ? parseInt(periodDay) : null,
-        createdAt: new Date(),
+        createdAt: initialData ? (initialData.createdAt || new Date()) : new Date(),
       };
 
       const sourceRef = initialData 
@@ -252,7 +298,91 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Tutar ve Para Birimi</label>
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Tutar ve Para Birimi</label>
+                <button
+                  type="button"
+                  onClick={() => setShowMealCalculator(!showMealCalculator)}
+                  className="text-[10px] font-bold text-emerald-500 hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                >
+                  <Calculator className="w-3 h-3" />
+                  Yemek Parası Hesapla
+                </button>
+              </div>
+              
+              {showMealCalculator && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 bg-zinc-950 border border-emerald-500/30 rounded-2xl space-y-4 mb-2"
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Günlük Ücret</label>
+                      <input
+                        type="text"
+                        value={dailyMealRate}
+                        onChange={(e) => setDailyMealRate(e.target.value)}
+                        placeholder="Örn: 200"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Çalışma Günü</label>
+                      <div className="flex bg-zinc-900 rounded-xl p-1 border border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => setWorkingDaysPerWeek(5)}
+                          className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${workingDaysPerWeek === 5 ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                        >
+                          5 GÜN
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWorkingDaysPerWeek(6)}
+                          className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${workingDaysPerWeek === 6 ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                        >
+                          6 GÜN
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Ay</label>
+                      <select
+                        value={mealMonth}
+                        onChange={(e) => setMealMonth(parseInt(e.target.value))}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none"
+                      >
+                        {['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'].map((m, i) => (
+                          <option key={i} value={i}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Yıl</label>
+                      <select
+                        value={mealYear}
+                        onChange={(e) => setMealYear(parseInt(e.target.value))}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none"
+                      >
+                        {[2024, 2025, 2026, 2027].map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={calculateMealAllowance}
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+                  >
+                    Hesapla ve Uygula
+                  </button>
+                </motion.div>
+              )}
+
               <div className="flex gap-2 overflow-hidden">
                 <input
                   type="text"
@@ -379,6 +509,7 @@ const SUBTYPE_OPTIONS: Record<string, { id: string; label: string }[]> = {
     { id: 'liquidity_deposit', label: 'Likidite ve Mevduat' },
     { id: 'investment', label: 'Yatırım' },
     { id: 'credit_debt', label: 'Kredi ve Borç' },
+    { id: 'credit_card', label: 'Kredi Kartı' },
   ],
   crypto: [
     { id: 'global_exchange', label: 'Küresel Borsa' },
@@ -452,8 +583,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 // --- Components ---
 
 const INSTITUTION_OPTIONS: Record<string, string[]> = {
-  banking: ['Garanti BBVA', 'Akbank', 'İş Bankası', 'Yapı Kredi', 'Ziraat Bankası', 'VakıfBank', 'Halkbank', 'QNB Finansbank', 'DenizBank', 'Kuveyt Türk', 'Enpara', 'Papara', 'TEB', 'ING', 'HSBC', 'Odeabank', 'Burgan Bank', 'Alternatif Bank', 'Anadolubank', 'Fibabanka', 'Şekerbank', 'Emlak Katılım', 'Vakıf Katılım', 'Türkiye Finans', 'Albaraka Türk'],
-  crypto: ['Binance', 'Paribu', 'BtcTurk', 'OKX', 'KuCoin', 'Coinbase', 'Gate.io', 'Huobi', 'Kraken', 'Bitfinex', 'Mexc'],
+  banking: ['Garanti BBVA', 'Akbank', 'İş Bankası', 'Ziraat Bankası', 'VakıfBank', 'Halkbank', 'QNB Finansbank', 'DenizBank', 'Kuveyt Türk', 'Enpara', 'Papara', 'TEB', 'ING', 'HSBC', 'Odeabank', 'Burgan Bank', 'Alternatif Bank', 'Anadolubank', 'Fibabanka', 'Şekerbank', 'Emlak Katılım', 'Vakıf Katılım', 'Türkiye Finans', 'Albaraka Türk'],
+  crypto: ['Bitexen Global', 'Binance', 'Paribu', 'BtcTurk', 'OKX', 'KuCoin', 'Coinbase', 'Gate.io', 'Huobi', 'Kraken', 'Bitfinex', 'Mexc'],
   social_gift: ['Sodexo', 'Ticket', 'Multinet', 'Metropol', 'Yemeksepeti', 'İstanbulkart', 'Ankarakart', 'İzmirim Kart', 'Hopi', 'Boyner', 'Migros Money', 'CarrefourSA Kart'],
 };
 
@@ -493,6 +624,16 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   const [assetUnitPrice, setAssetUnitPrice] = useState('');
   const [assetTotalCost, setAssetTotalCost] = useState('');
   const [assetPurchaseDate, setAssetPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // API states
+  const [isApiConnected, setIsApiConnected] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Credit Card states
+  const [creditLimit, setCreditLimit] = useState('');
+  const [statementDay, setStatementDay] = useState('1');
 
   const handleQuantityChange = (val: string) => {
     setAssetQuantity(val);
@@ -580,6 +721,24 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       } else {
         setIsAsset(false);
       }
+
+      if (initialData.apiConfig) {
+        setIsApiConnected(true);
+        setApiKey(initialData.apiConfig.apiKey || '');
+        setApiSecret(initialData.apiConfig.apiSecret || '');
+      } else {
+        setIsApiConnected(false);
+        setApiKey('');
+        setApiSecret('');
+      }
+
+      if (initialData.subType === 'credit_card') {
+        setCreditLimit(initialData.creditLimit?.toString() || '');
+        setStatementDay(initialData.statementDay?.toString() || '1');
+      } else {
+        setCreditLimit('');
+        setStatementDay('1');
+      }
     } else {
       setName('');
       setOwnerId(user?.uid || '');
@@ -603,6 +762,11 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       setAssetUnitPrice('');
       setAssetTotalCost('');
       setAssetPurchaseDate(new Date().toISOString().split('T')[0]);
+      setIsApiConnected(false);
+      setApiKey('');
+      setApiSecret('');
+      setCreditLimit('');
+      setStatementDay('1');
     }
   }, [initialData, isOpen, user]);
 
@@ -627,6 +791,15 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       points: subType === 'credit_debt' ? points : [],
     };
 
+    if (subType === 'credit_card') {
+      accountData.isCreditCard = true;
+      accountData.creditLimit = parseFloat(creditLimit) || 0;
+      accountData.statementDay = parseInt(statementDay) || 1;
+      // For credit cards, balance is usually the current debt.
+      // If it's a new card, balance starts at 0 unless it's an edit.
+      accountData.type = 'liability';
+    }
+
     if (subType === 'liquidity_deposit') {
       accountData.depositDetails = {
         isTimeDeposit,
@@ -649,6 +822,12 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
     } else {
       accountData.assetDetails = null;
     }
+
+    accountData.apiConfig = isApiConnected ? {
+      apiKey,
+      apiSecret,
+      lastSync: initialData?.apiConfig?.lastSync || null
+    } : null;
 
     try {
       if (initialData) {
@@ -765,6 +944,39 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
               <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 pointer-events-none" />
             </div>
           </div>
+
+          {subType === 'credit_card' && (
+            <div className="space-y-4 p-4 bg-rose-500/5 border border-rose-500/20 rounded-2xl">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Kredi Limiti</label>
+                  <input
+                    type="text"
+                    required
+                    value={formatAmount(creditLimit)}
+                    onChange={(e) => setCreditLimit(parseAmount(cleanAmountInput(e.target.value)))}
+                    placeholder="0,00"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Hesap Kesim Günü</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    required
+                    value={statementDay}
+                    onChange={(e) => setStatementDay(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-rose-500/60 font-medium italic">
+                * Borç ve asgari ödeme tutarı harcamalarınıza göre otomatik hesaplanacaktır.
+              </p>
+            </div>
+          )}
 
           {subType === 'liquidity_deposit' && (
             <div className="space-y-4 p-4 bg-zinc-950/50 border border-zinc-800/50 rounded-2xl">
@@ -1074,7 +1286,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   );
 };
 
-const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData, isPrivacyMode }: any) => {
+const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData, isPrivacyMode, defaultIsSubscription = false }: any) => {
   const { user } = useAuth();
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -1088,6 +1300,8 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
   const [userId, setUserId] = useState('');
   const [isInstallment, setIsInstallment] = useState(false);
   const [installmentCount, setInstallmentCount] = useState('2');
+  const [isSubscription, setIsSubscription] = useState(defaultIsSubscription);
+  const [periodDay, setPeriodDay] = useState(new Date().getDate().toString());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -1103,6 +1317,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         setUserId(initialData.userId || user?.uid || '');
         setIsInstallment(initialData.isInstallment || false);
         setInstallmentCount(initialData.installmentCount?.toString() || '2');
+        setIsSubscription(false);
         
         // Determine type
         const debitAcc = accounts.find((a: any) => a.id === initialData.debitAccountId);
@@ -1118,6 +1333,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         setUserId(user?.uid || '');
         setIsInstallment(false);
         setInstallmentCount('2');
+        setIsSubscription(defaultIsSubscription);
         // Set defaults
         if (type === 'expense') {
           const defaultCat = categories.find((c: any) => c.type === 'expense');
@@ -1137,7 +1353,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         }
       }
     }
-  }, [isOpen, type, accounts, categories, initialData, user]);
+  }, [isOpen, type, accounts, categories, initialData, user, defaultIsSubscription]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1160,6 +1376,21 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         await updateLedgerTransaction(householdId, initialData.id, txData);
       } else if (isInstallment && type === 'expense') {
         await createInstallmentTransactions(householdId, txData, parseInt(installmentCount));
+      } else if (isSubscription && type === 'expense') {
+        // Create as a recurring expense source
+        await createExpenseSource(householdId, {
+          name: description,
+          amount: parseFloat(amount),
+          currency,
+          flowType: 'fixed',
+          periodDay: parseInt(periodDay),
+          sourceAccountId: creditAccountId,
+          categoryId,
+          ownerId: userId || user.uid,
+          status: 'active'
+        });
+        // Also create the first transaction
+        await createLedgerTransaction(householdId, txData);
       } else {
         await createLedgerTransaction(householdId, txData);
       }
@@ -1318,6 +1549,54 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
                   </p>
                 </div>
               )}
+
+              <div className="pt-2 border-t border-zinc-800/50 mt-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isSubscription}
+                    onChange={(e) => {
+                      setIsSubscription(e.target.checked);
+                      if (e.target.checked) setIsInstallment(false);
+                    }}
+                    className="w-5 h-5 rounded border-zinc-700 text-emerald-500 focus:ring-emerald-500/20 bg-zinc-900"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-zinc-200">Düzenli Ödeme (Abonelik)</span>
+                    <span className="text-xs text-zinc-400">Kira, abonelik gibi her ay tekrarlayan ödemeler</span>
+                  </div>
+                </label>
+
+                {isSubscription && (
+                  <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Her Ayın Kaçında?</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {[1, 5, 10, 15, 20, 25, 28].map(day => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => setPeriodDay(day.toString())}
+                          className={`w-10 h-10 rounded-xl text-xs font-bold transition-all ${
+                            periodDay === day.toString() 
+                              ? 'bg-emerald-500 text-white' 
+                              : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={periodDay}
+                        onChange={(e) => setPeriodDay(e.target.value)}
+                        className="w-12 h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-2 text-xs text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1814,6 +2093,13 @@ const JoinOrCreateHousehold = () => {
 
       const householdDoc = snap.docs[0];
       const householdId = householdDoc.id;
+      const householdData = householdDoc.data();
+
+      // Check if user is already a member
+      if (householdData.members && householdData.members[user.uid]) {
+        setError('Zaten bu hanenin bir üyesisiniz.');
+        return;
+      }
 
       // Add user to household members
       const memberData = {
@@ -2066,6 +2352,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [txModalIsSubscription, setTxModalIsSubscription] = useState(false);
   const [isAccModalOpen, setIsAccModalOpen] = useState(false);
   const logSecurityAction = async (action: string, details?: string) => {
     if (!user) return;
@@ -2208,24 +2495,28 @@ const Dashboard = () => {
 
   // Sync owner profile info and generate joinCode if missing
   useEffect(() => {
-    if (user && household && household.ownerId === user.uid) {
-      const member = household.members[user.uid];
-      const updates: any = {};
-      
-      if (member && (!member.email || member.displayName === 'Kullanıcı')) {
-        updates[`members.${user.uid}.email`] = user.email || '';
-        updates[`members.${user.uid}.displayName`] = user.displayName || 'Kullanıcı';
+    const syncHousehold = async () => {
+      if (user && household && household.ownerId === user.uid) {
+        const member = household.members[user.uid];
+        const updates: any = {};
+        
+        if (member && (!member.email || member.displayName === 'Kullanıcı')) {
+          updates[`members.${user.uid}.email`] = user.email || '';
+          updates[`members.${user.uid}.displayName`] = user.displayName || 'Kullanıcı';
+        }
+        
+        if (!household.joinCode) {
+          updates.joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          const householdRef = doc(db, 'households', household.id);
+          await updateDoc(householdRef, updates);
+          await localDB.households.update(household.id, updates);
+        }
       }
-      
-      if (!household.joinCode) {
-        updates.joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      }
-      
-      if (Object.keys(updates).length > 0) {
-        const householdRef = doc(db, 'households', household.id);
-        updateDoc(householdRef, updates);
-      }
-    }
+    };
+    syncHousehold();
   }, [user, household]);
 
   // Real data fetching
@@ -2248,6 +2539,12 @@ const Dashboard = () => {
   const { data: incomeSources } = useCollection<IncomeSource>(
     household ? `households/${household.id}/incomeSources` : '',
     incomeSourceConstraints
+  );
+
+  const expenseSourceConstraints = useMemo(() => [], []);
+  const { data: expenseSources } = useCollection<any>(
+    household ? `households/${household.id}/expenseSources` : '',
+    expenseSourceConstraints
   );
 
   const expectedIncomeConstraints = useMemo(() => [orderBy('expectedDate', 'asc')], []);
@@ -2539,26 +2836,26 @@ const Dashboard = () => {
             onClick={() => handleTabChange('accounts')} 
           />
           <SidebarItem 
-            icon={ArrowRightLeft} 
-            label="İşlemler" 
-            active={activeTab === 'transactions'} 
-            onClick={() => handleTabChange('transactions')} 
+            icon={TrendingUp} 
+            label="Gelir" 
+            active={activeTab === 'income'} 
+            onClick={() => handleTabChange('income')} 
+          />
+          <SidebarItem 
+            icon={TrendingDown} 
+            label="Gider" 
+            active={activeTab === 'expense'} 
+            onClick={() => handleTabChange('expense')} 
           />
           <SidebarItem 
             icon={PieChart} 
-            label="Raporlar" 
+            label="Rapor" 
             active={activeTab === 'reports'} 
             onClick={() => handleTabChange('reports')} 
           />
           <SidebarItem 
-            icon={Target} 
-            label="Planlanan Giderler" 
-            active={activeTab === 'planned'} 
-            onClick={() => handleTabChange('planned')} 
-          />
-          <SidebarItem 
             icon={Users} 
-            label="Hane Grupları" 
+            label="Gruplar" 
             active={activeTab === 'groups'} 
             onClick={() => handleTabChange('groups')} 
           />
@@ -2602,9 +2899,9 @@ const Dashboard = () => {
             <h2 className="text-2xl font-bold tracking-tight">
               {activeTab === 'overview' && 'Genel Bakış'}
               {activeTab === 'accounts' && 'Hesaplarım'}
-              {activeTab === 'transactions' && 'İşlemler'}
+              {activeTab === 'income' && 'Gelir Yönetimi'}
+              {activeTab === 'expense' && 'Gider Yönetimi'}
               {activeTab === 'reports' && 'Finansal Raporlar'}
-              {activeTab === 'planned' && 'Planlanan Giderler'}
               {activeTab === 'groups' && 'Hane Grupları'}
               {activeTab === 'settings' && 'Ayarlar'}
               {activeTab === 'admin' && 'Yönetici Paneli'}
@@ -2654,14 +2951,6 @@ const Dashboard = () => {
             </div>
 
             <div className="h-8 w-px bg-border mx-1"></div>
-
-            <button 
-              onClick={() => activeTab === 'accounts' ? setIsAccModalOpen(true) : setIsTxModalOpen(true)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-all shadow-lg shadow-primary/20"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{activeTab === 'accounts' ? 'Yeni Hesap' : 'Yeni İşlem'}</span>
-            </button>
           </div>
         </header>
 
@@ -2719,337 +3008,85 @@ const Dashboard = () => {
             />
           )}
 
-          {activeTab === 'transactions' && (
-            <div className="space-y-8">
-              {/* Installment Summary Section */}
-              {transactions.some(t => t.isInstallment && t.date > new Date()) && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
-                    <CreditCard className="w-5 h-5 text-blue-500" />
-                    Gelecek Taksitler
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {transactions
-                      .filter(t => t.isInstallment && t.date > new Date())
-                      .sort((a, b) => a.date.getTime() - b.date.getTime())
-                      .slice(0, 6)
-                      .map(tx => (
-                        <div key={tx.id} className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl hover:border-blue-500/30 transition-all group">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 uppercase tracking-wider">
-                              {tx.installmentNumber}/{tx.installmentCount} Taksit
-                            </span>
-                            <span className="text-xs text-zinc-300">{new Date(tx.date).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</span>
-                          </div>
-                          <h4 className="text-sm font-medium text-white truncate">{tx.description}</h4>
-                          <div className="flex justify-between items-end mt-3">
-                            <span className="text-xs text-zinc-400">{accounts.find(a => a.id === tx.creditAccountId)?.name || 'Hesap'}</span>
-                            <span className="text-sm font-bold text-rose-500">{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}</span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold">İşlem Geçmişi</h3>
-                </div>
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-zinc-800">
-                      <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Tarih</th>
-                      <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">İşlemi Yapan</th>
-                      <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Açıklama</th>
-                      <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Kategori</th>
-                      <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Hesap</th>
-                      <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider text-right">Tutar</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800">
-                    {transactions.map(tx => {
-                      const category = categories.find(c => c.id === tx.categoryId);
-                      const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
-                      const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
-                      const isExpense = !!debitAcc && !creditAcc;
-                      const isIncome = !debitAcc && !!creditAcc;
-                      const member = household?.members?.[tx.userId];
-                      
-                      return (
-                        <tr key={tx.id} className="group hover:bg-zinc-800/50 transition-colors cursor-pointer" onClick={() => { setEditingTransaction(tx); setIsTxModalOpen(true); }}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-zinc-300">{new Date(tx.date).toLocaleDateString('tr-TR')}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                member?.type === 'child' ? 'bg-purple-500/20 text-purple-500' : 
-                                member?.type === 'elderly' ? 'bg-rose-500/20 text-rose-500' :
-                                member?.type === 'adult' ? 'bg-blue-500/20 text-blue-500' :
-                                'bg-emerald-500/20 text-emerald-500'
-                              }`}>
-                                {member?.displayName?.charAt(0) || '?'}
-                              </div>
-                              <span className="text-sm text-zinc-300">{member?.displayName || 'Bilinmiyor'}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex flex-col">
-                              <div className="text-sm font-medium text-white">{tx.description}</div>
-                              {tx.isInstallment && (
-                                <div className="flex items-center gap-1 mt-1">
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 uppercase tracking-wider">
-                                    Taksit {tx.installmentNumber}/{tx.installmentCount}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="inline-flex items-center gap-2 px-2 py-1 rounded-lg bg-zinc-800 text-xs text-zinc-300">
-                              <Tag className="w-3 h-3" />
-                              {category?.name || 'Diğer'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-zinc-300">
-                              {(() => {
-                                const getAccName = (acc: any) => acc?.institution ? `${acc.institution} — ${acc.name}` : acc?.name;
-                                if (isExpense) return getAccName(debitAcc);
-                                if (isIncome) return getAccName(creditAcc);
-                                return `${getAccName(debitAcc)} → ${getAccName(creditAcc)}`;
-                              })()}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right">
-                            <div className={`text-sm font-bold ${isExpense ? 'text-rose-500' : isIncome ? 'text-emerald-500' : 'text-blue-500'}`}>
-                              {isExpense ? '-' : isIncome ? '+' : ''}{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {transactions.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-zinc-300">
-                          Henüz işlem bulunmuyor.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          {activeTab === 'income' && (
+            <IncomeView 
+              householdId={household?.id || ''}
+              incomeSources={incomeSources}
+              expectedIncomes={expectedIncomes}
+              transactions={transactions}
+              accounts={accounts}
+              onAddIncome={() => {
+                setEditingIncomeSource(null);
+                setIsIncomeModalOpen(true);
+              }}
+              onEditIncome={(source) => {
+                setEditingIncomeSource(source);
+                setIsIncomeModalOpen(true);
+              }}
+              onApproveIncome={handleApproveIncome}
+              isPrivacyMode={isPrivacyMode}
+            />
           )}
+
+          {activeTab === 'expense' && (
+            <ExpenseView 
+              householdId={household?.id || ''}
+              plannedExpenses={plannedExpenses}
+              expenseSources={expenseSources}
+              transactions={transactions}
+              accounts={accounts}
+              categories={categories}
+              onAddTransaction={() => {
+                setEditingTransaction(null);
+                setIsTxModalOpen(true);
+              }}
+              onAddSubscription={() => {
+                setTxModalIsSubscription(true);
+                setIsTxModalOpen(true);
+              }}
+              onAddPlannedExpense={() => {
+                setIsTxModalOpen(true);
+              }}
+              isPrivacyMode={isPrivacyMode}
+            />
+          )}
+
+
 
           {activeTab === 'accounts' && (
-            <div className="space-y-12">
-              {BRANCH_OPTIONS.map(branch => {
-                const branchAccounts = accounts.filter(acc => acc.branch === branch.id);
-                if (branchAccounts.length === 0) return null;
-
-                return (
-                  <div key={branch.id} className="space-y-6">
-                    <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-zinc-900 rounded-xl">
-                          <branch.icon className={`w-6 h-6 ${branch.color}`} />
-                        </div>
-                        <div>
-                          <h3 className="text-xl font-bold">{branch.label}</h3>
-                          <p className="text-zinc-300 text-sm">
-                            Toplam: {formatWithEquivalent(branchAccounts.reduce((sum, a) => {
-                              let balance = a.balance;
-                              if (a.assetDetails && assetPrices[a.assetDetails.symbol]) {
-                                balance = a.assetDetails.quantity * assetPrices[a.assetDetails.symbol].price;
-                              }
-                              const amountInTRY = convertToTRY(balance, a.currency || 'TRY');
-                              return sum + (a.type === 'asset' ? amountInTRY : -amountInTRY);
-                            }, 0), 'TRY')}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {branchAccounts.map((acc) => (
-                        <div key={acc.id} className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl relative overflow-hidden group hover:border-zinc-700 transition-all">
-                          <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-10 ${acc.type === 'asset' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                          <div className="flex justify-between items-start mb-6">
-                            <div className={`p-3 rounded-2xl ${acc.type === 'asset' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
-                              {acc.subType === 'credit_debt' ? <CreditCard className="w-6 h-6" /> :
-                               acc.subType === 'investment' ? <TrendingUp className="w-6 h-6" /> :
-                               acc.branch === 'crypto' ? <Bitcoin className="w-6 h-6" /> :
-                               acc.subType === 'transport' ? <Bus className="w-6 h-6" /> :
-                               acc.subType === 'food' ? <Smartphone className="w-6 h-6" /> :
-                               <Wallet className="w-6 h-6" />}
-                            </div>
-                            <div className="flex gap-2">
-                              <button 
-                                onClick={() => { setEditingAccount(acc); setIsAccModalOpen(true); }}
-                                className="p-2 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-all"
-                              >
-                                <Settings className="w-4 h-4" />
-                              </button>
-                              <span className={`text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wider ${acc.type === 'asset' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
-                                {acc.subType === 'liquidity_deposit' && acc.depositDetails 
-                                  ? (acc.depositDetails.isTimeDeposit ? 'Vadeli Mevduat' : 'Vadesiz Mevduat')
-                                  : (SUBTYPE_OPTIONS[acc.branch || 'banking'].find(s => s.id === acc.subType)?.label || acc.type)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col">
-                            {acc.institution && (
-                              <span className="text-[10px] text-zinc-300 uppercase tracking-widest font-bold mb-0.5">{acc.institution}</span>
-                            )}
-                            <h3 className="text-lg font-bold mb-1">{acc.name}</h3>
-                          </div>
-                          <div className="flex items-center gap-2 mb-4">
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold ${
-                              household?.members?.[acc.ownerId]?.type === 'child' ? 'bg-purple-500/20 text-purple-500' : 
-                              household?.members?.[acc.ownerId]?.type === 'elderly' ? 'bg-rose-500/20 text-rose-500' :
-                              household?.members?.[acc.ownerId]?.type === 'adult' ? 'bg-blue-500/20 text-blue-500' :
-                              'bg-emerald-500/20 text-emerald-500'
-                            }`}>
-                              {household?.members?.[acc.ownerId]?.displayName?.charAt(0) || '?'}
-                            </div>
-                            <span className="text-xs text-zinc-300">{household?.members?.[acc.ownerId]?.displayName || 'Bilinmiyor'}</span>
-                            <span className="text-zinc-700">•</span>
-                            <span className="text-xs text-zinc-300">{acc.currency}</span>
-                          </div>
-                          
-                          {acc.depositDetails && acc.depositDetails.isTimeDeposit && (
-                            <div className="mb-4 text-xs space-y-1 bg-zinc-800/50 p-3 rounded-xl border border-zinc-700/50">
-                              <div className="flex justify-between text-zinc-300">
-                                <span>Faiz Oranı:</span>
-                                <span className="text-emerald-400 font-medium">%{(acc.depositDetails.interestRate || 0).toLocaleString()}</span>
-                              </div>
-                              <div className="flex justify-between text-zinc-300">
-                                <span>Vade:</span>
-                                <span className="text-zinc-300">
-                                  {acc.depositDetails.period === 'daily' ? 'Günlük' : acc.depositDetails.period === 'monthly' ? 'Aylık' : 'Yıllık'}
-                                </span>
-                              </div>
-                              {acc.depositDetails.maturityDate && (
-                                <div className="flex justify-between text-zinc-300">
-                                  <span>Vade Sonu:</span>
-                                  <span className="text-zinc-300">{new Date(acc.depositDetails.maturityDate).toLocaleDateString('tr-TR')}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {acc.assetDetails ? (
-                            <div className="space-y-2">
-                              {assetPrices[acc.assetDetails.symbol] ? (
-                                <>
-                                  <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-bold">
-                                      {formatWithEquivalent(acc.assetDetails.quantity * assetPrices[acc.assetDetails.symbol].price, acc.currency || 'TRY')}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between items-center text-sm">
-                                    <span className="text-zinc-300">Adet:</span>
-                                    <span className="font-medium">{acc.assetDetails.quantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}</span>
-                                  </div>
-                                  <div className="flex justify-between items-center text-sm">
-                                    <span className="text-zinc-300">Güncel Fiyat:</span>
-                                    <span className="font-medium">{assetPrices[acc.assetDetails.symbol].price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {assetPrices[acc.assetDetails.symbol].currency}</span>
-                                  </div>
-                                  <div className="flex justify-between items-center text-sm">
-                                    <span className="text-zinc-300">Maliyet:</span>
-                                    <span className="font-medium">{acc.assetDetails.purchasePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {acc.currency}</span>
-                                  </div>
-                                  <div className="flex justify-between items-center text-sm pt-2 border-t border-zinc-800">
-                                    <span className="text-zinc-300">Kar/Zarar:</span>
-                                    <div className="flex flex-col items-end">
-                                      {(() => {
-                                        const currentTotal = acc.assetDetails.quantity * assetPrices[acc.assetDetails.symbol].price;
-                                        const costTotal = acc.assetDetails.quantity * acc.assetDetails.purchasePrice;
-                                        // If currencies match, we can calculate directly. If not, we should convert.
-                                        // For simplicity, assuming purchasePrice and currentPrice are in the same currency (e.g. USD for crypto, TRY for stocks)
-                                        const pl = currentTotal - costTotal;
-                                        const plPercent = (pl / costTotal) * 100;
-                                        const isProfit = pl >= 0;
-                                        return (
-                                          <>
-                                            <span className={`font-bold ${isProfit ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                              {isProfit ? '+' : ''}{pl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {assetPrices[acc.assetDetails.symbol].currency}
-                                            </span>
-                                            <span className={`text-xs ${isProfit ? 'text-emerald-500/80' : 'text-rose-500/80'}`}>
-                                              {isProfit ? '+' : ''}{plPercent.toFixed(2)}%
-                                            </span>
-                                          </>
-                                        );
-                                      })()}
-                                    </div>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-bold">{formatWithEquivalent(acc.balance, acc.currency || 'TRY')}</span>
-                                  </div>
-                                  <div className="text-sm text-zinc-300">
-                                    Adet: {acc.assetDetails.quantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}
-                                  </div>
-                                  <div className="text-xs text-zinc-300 animate-pulse">Güncel fiyat bekleniyor...</div>
-                                </>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-baseline gap-1">
-                              <span className="text-2xl font-bold">{formatWithEquivalent(acc.balance, acc.currency || 'TRY')}</span>
-                            </div>
-                          )}
-                          
-                          {acc.points && acc.points.length > 0 && (
-                            <div className="mt-4 pt-4 border-t border-zinc-800 space-y-2">
-                              {acc.points.map((p, idx) => (
-                                <div key={idx} className="flex justify-between items-center text-xs">
-                                  <span className="text-zinc-300">{p.name}</span>
-                                  <span className="font-medium text-emerald-500">{p.amount.toLocaleString()} Puan</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-              
-              <div className="pt-8">
-                <button 
-                  onClick={() => { setEditingAccount(null); setIsAccModalOpen(true); }}
-                  className="w-full border-2 border-dashed border-zinc-800 rounded-3xl p-12 flex flex-col items-center justify-center gap-4 text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-500 transition-all group bg-zinc-900/30"
-                >
-                  <div className="p-4 bg-zinc-900 rounded-2xl group-hover:bg-emerald-500/10 transition-all">
-                    <Plus className="w-8 h-8" />
-                  </div>
-                  <div className="text-center">
-                    <span className="block font-bold text-lg">Yeni Hesap Ekle</span>
-                    <p className="text-sm">Bankacılık, Kripto veya Sosyal Kart ekleyin</p>
-                  </div>
-                </button>
-              </div>
-            </div>
+            <AccountsView 
+              householdId={household?.id || ''}
+              accounts={accounts}
+              onAddAccount={() => {
+                setEditingAccount(null);
+                setIsAccModalOpen(true);
+              }}
+              onEditAccount={(account) => {
+                setEditingAccount(account);
+                setIsAccModalOpen(true);
+              }}
+              isPrivacyMode={isPrivacyMode}
+            />
           )}
 
-          {activeTab === 'budgets' && (
-            <div className="p-8 max-w-7xl mx-auto">
-              <PlannedExpenses 
-                householdId={household?.id} 
-                categories={categories}
-                accounts={accounts}
-                members={household?.members}
-                isPrivacyMode={isPrivacyMode}
-              />
-            </div>
+          {activeTab === 'reports' && (
+            <Reports 
+              transactions={transactions}
+              categories={categories}
+              accounts={accounts}
+              formatWithEquivalent={formatWithEquivalent}
+              convertToTRY={convertToTRY}
+            />
+          )}
+
+          {activeTab === 'groups' && (
+            <SharedBudgets 
+              householdId={household?.id || ''}
+            />
+          )}
+
+          {activeTab === 'admin' && profile?.isAdmin && (
+            <AdminPanel currentUserEmail={user?.email || ''} />
           )}
 
           {activeTab === 'settings' && (
@@ -3183,192 +3220,22 @@ const Dashboard = () => {
             </div>
           )}
 
-          {activeTab === 'income' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-white">Gelir Yönetimi</h1>
-                <p className="text-zinc-300">Gelir kaynaklarını ve beklenen girişleri yönetin.</p>
-              </div>
-              <button 
-                onClick={() => {
-                  setEditingIncomeSource(null);
-                  setIsIncomeModalOpen(true);
-                }}
-                className="bg-emerald-500 text-white px-4 py-2 rounded-xl font-semibold hover:bg-emerald-600 transition-colors flex items-center gap-2"
-              >
-                <Plus className="w-5 h-5" /> Yeni Kaynak
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Income Sources List */}
-              <div className="lg:col-span-1 space-y-4">
-                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-emerald-500" /> Gelir Kaynakları
-                </h2>
-                <div className="space-y-3">
-                  {incomeSources.map(source => (
-                    <div key={source.id} className="bg-zinc-900 border border-white/5 rounded-2xl p-4 hover:border-emerald-500/30 transition-all group">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                          source.flowType === 'fixed' ? 'bg-blue-500/10 text-blue-500' :
-                          source.flowType === 'variable' ? 'bg-amber-500/10 text-amber-500' :
-                          'bg-purple-500/10 text-purple-500'
-                        }`}>
-                          {source.flowType === 'fixed' ? 'Sabit' : source.flowType === 'variable' ? 'Değişken' : 'Spot'}
-                        </span>
-                        <button 
-                          onClick={() => {
-                            setEditingIncomeSource(source);
-                            setIsIncomeModalOpen(true);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/5 rounded-lg transition-all"
-                        >
-                          <Settings className="w-4 h-4 text-zinc-300" />
-                        </button>
-                      </div>
-                      <h3 className="text-white font-medium">{source.name}</h3>
-                      <div className="flex items-end justify-between mt-2">
-                        <div className="text-xs text-zinc-300">
-                          {source.flowType !== 'spot' && `Her ayın ${source.periodDay}. günü`}
-                        </div>
-                        <div className="text-lg font-bold text-white">
-                          {formatWithEquivalent(source.amount, source.currency || 'TRY')}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {incomeSources.length === 0 && (
-                    <div className="text-center py-8 bg-zinc-900/50 border border-dashed border-white/5 rounded-2xl">
-                      <p className="text-zinc-300 text-sm">Henüz gelir kaynağı eklenmemiş.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Expected Incomes List */}
-              <div className="lg:col-span-2 space-y-4">
-                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-emerald-500" /> Beklenen Girişler
-                </h2>
-                <div className="bg-zinc-900 border border-white/5 rounded-3xl overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b border-white/5">
-                          <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Tarih</th>
-                          <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Kaynak</th>
-                          <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Miktar</th>
-                          <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider">Durum</th>
-                          <th className="px-6 py-4 text-xs font-bold text-zinc-300 uppercase tracking-wider text-right">İşlem</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {expectedIncomes.map(expected => (
-                          <tr key={expected.id} className="group hover:bg-white/[0.02] transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-white font-medium">
-                                {new Date(expected.expectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-zinc-300">{expected.sourceName}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-bold text-white">
-                                {formatWithEquivalent(expected.amount, expected.currency || 'TRY')}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                                expected.status === 'pending' ? 'bg-amber-500/10 text-amber-500' :
-                                expected.status === 'realized' ? 'bg-emerald-500/10 text-emerald-500' :
-                                'bg-rose-500/10 text-rose-500'
-                              }`}>
-                                {expected.status === 'pending' ? 'Bekliyor' : expected.status === 'realized' ? 'Gerçekleşti' : 'İptal'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                              {expected.status === 'pending' && (
-                                <button 
-                                  onClick={() => handleApproveIncome(expected)}
-                                  className="bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                                >
-                                  Onayla
-                                </button>
-                              )}
-                              {expected.status === 'realized' && (
-                                <div className="flex items-center justify-end gap-1 text-emerald-500">
-                                  <Check className="w-4 h-4" />
-                                  <span className="text-[10px] font-bold uppercase">Tamamlandı</span>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                        {expectedIncomes.length === 0 && (
-                          <tr>
-                            <td colSpan={5} className="px-6 py-12 text-center text-zinc-300">
-                              Bekleyen gelir girişi bulunmuyor.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <IncomeSourceModal 
-              isOpen={isIncomeModalOpen}
-              onClose={() => setIsIncomeModalOpen(false)}
-              householdId={household?.id}
-              accounts={accounts}
-              members={household?.members}
-              initialData={editingIncomeSource}
-              isPrivacyMode={isPrivacyMode}
-            />
-          </div>
-        )}
-
-        {activeTab === 'reports' && (
-          <div className="p-8 max-w-7xl mx-auto">
-            <Reports 
-              transactions={transactions}
-              accounts={accounts}
-              categories={categories}
-              members={household?.members}
-              formatWithEquivalent={formatWithEquivalent}
-              convertToTRY={convertToTRY}
-            />
-          </div>
-        )}
-
-        {activeTab === 'groups' && (
-          <div className="p-8 max-w-7xl mx-auto">
-            <SharedBudgets 
-              householdId={household?.id} 
-              showNotification={showNotification}
-            />
-          </div>
-        )}
-
-        {activeTab === 'admin' && profile?.isAdmin && (
-          <AdminPanel currentUserEmail={user?.email || ''} />
-        )}
         </div>
 
         <TransactionModal 
           isOpen={isTxModalOpen} 
-          onClose={() => { setIsTxModalOpen(false); setEditingTransaction(null); }} 
+          onClose={() => { 
+            setIsTxModalOpen(false); 
+            setEditingTransaction(null); 
+            setTxModalIsSubscription(false);
+          }} 
           householdId={household?.id}
           accounts={accounts}
           categories={categories}
           members={household?.members}
           initialData={editingTransaction}
           isPrivacyMode={isPrivacyMode}
+          defaultIsSubscription={txModalIsSubscription}
         />
         <AccountModal
           isOpen={isAccModalOpen}
@@ -3376,6 +3243,15 @@ const Dashboard = () => {
           householdId={household?.id}
           members={household?.members}
           initialData={editingAccount}
+          isPrivacyMode={isPrivacyMode}
+        />
+        <IncomeSourceModal
+          isOpen={isIncomeModalOpen}
+          onClose={() => { setIsIncomeModalOpen(false); setEditingIncomeSource(null); }}
+          householdId={household?.id}
+          accounts={accounts}
+          members={household?.members}
+          initialData={editingIncomeSource}
           isPrivacyMode={isPrivacyMode}
         />
 
