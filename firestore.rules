@@ -120,11 +120,8 @@ service cloud.firestore {
 
     // Households
     match /households/{householdId} {
-      // Allow read if member OR if the user is trying to find the household via joinCode
-      // Note: list is allowed for authenticated users to enable the joinCode search query.
-      // We rely on the joinCode being a secret known only to the household members.
-      allow read: if isAuthenticated() && (request.auth.uid in resource.data.members.keys() || isAdmin());
-      allow list: if isAuthenticated();
+      // Allow read for all authenticated users to enable joinCode search and joining
+      allow read: if isAuthenticated();
       
       allow create: if isAuthenticated() && isValidHousehold(request.resource.data) && 
                       request.resource.data.ownerId == request.auth.uid &&

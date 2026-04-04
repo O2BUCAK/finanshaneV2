@@ -2282,7 +2282,7 @@ const JoinOrCreateHousehold = () => {
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               placeholder="Örn: AB12CD"
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 text-center text-xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 text-center text-xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white placeholder:text-zinc-600"
             />
           </div>
           {error && <p className="text-rose-500 text-xs text-center">{error}</p>}
