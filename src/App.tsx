@@ -71,6 +71,7 @@ import { createExpenseSource } from './lib/expenseSources';
 import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense, Household, UserProfile, ExpenseSource } from './types';
 import { 
   db, 
+  auth,
   doc, 
   collection, 
   setDoc, 
@@ -2031,7 +2032,7 @@ const JoinOrCreateHousehold = () => {
   // Auto-check for existing households on mount
   useEffect(() => {
     const checkExisting = async () => {
-      if (!user) return;
+      if (!user || !auth.currentUser) return; // Skip for local users
       setLoading(true);
       try {
         // 1. Check if user profile has activeHouseholdId in Firestore
@@ -2109,46 +2110,51 @@ const JoinOrCreateHousehold = () => {
         email: user.email || ''
       };
 
-      try {
-        await updateDoc(doc(db, 'households', householdId), {
-          [`members.${user.uid}`]: memberData
-        });
-      } catch (err: any) {
-        console.error('Household update error:', err);
-        if (err.code === 'permission-denied') {
-          setError('Hane güncellenemedi. Lütfen hane sahibi ile iletişime geçin.');
-        } else {
-          throw err;
+      // Only try Firestore if we have a real Firebase user
+      if (auth.currentUser) {
+        try {
+          await updateDoc(doc(db, 'households', householdId), {
+            [`members.${user.uid}`]: memberData
+          });
+        } catch (err: any) {
+          console.error('Household update error:', err);
+          if (err.code === 'permission-denied') {
+            setError('Hane güncellenemedi. Lütfen hane sahibi ile iletişime geçin.');
+          } else {
+            throw err;
+          }
+          return;
         }
-        return;
+
+        // Update user profile in Firestore
+        try {
+          // Use setDoc with merge: true to be more resilient
+          await setDoc(doc(db, 'users', user.uid), {
+            activeHouseholdId: householdId
+          }, { merge: true });
+        } catch (err: any) {
+          console.error('User profile update error:', err);
+          if (err.code === 'permission-denied') {
+            setError('Profil güncellenemedi. Lütfen tekrar deneyin.');
+          } else {
+            throw err;
+          }
+          return;
+        }
+
+        // SYNC FROM FIRESTORE TO LOCALDB
+        try {
+          const updatedHouseholdDoc = await getDoc(doc(db, 'households', householdId));
+          if (updatedHouseholdDoc.exists()) {
+            await localDB.households.put({ ...updatedHouseholdDoc.data(), id: householdId } as Household);
+          }
+        } catch (err: any) {
+          console.error('Firestore sync error:', err);
+        }
       }
 
-      // Update user profile in Firestore
-      try {
-        await updateDoc(doc(db, 'users', user.uid), {
-          activeHouseholdId: householdId
-        });
-      } catch (err: any) {
-        console.error('User profile update error:', err);
-        if (err.code === 'permission-denied') {
-          setError('Profil güncellenemedi. Lütfen tekrar deneyin.');
-        } else {
-          throw err;
-        }
-        return;
-      }
-
-      // SYNC TO LOCALDB
-      try {
-        const updatedHouseholdDoc = await getDoc(doc(db, 'households', householdId));
-        if (updatedHouseholdDoc.exists()) {
-          await localDB.households.put({ ...updatedHouseholdDoc.data(), id: householdId } as Household);
-        }
-        await localDB.users.update(user.uid, { activeHouseholdId: householdId });
-      } catch (err: any) {
-        console.error('LocalDB sync error:', err);
-        // This is not a fatal error for the UI, but we should log it
-      }
+      // ALWAYS SYNC TO LOCALDB
+      await localDB.users.update(user.uid, { activeHouseholdId: householdId });
 
     } catch (err: any) {
       console.error('Join error:', err);
@@ -2182,13 +2188,17 @@ const JoinOrCreateHousehold = () => {
         createdAt: new Date()
       };
 
-      await setDoc(doc(db, 'households', householdId), householdData, { merge: true });
+      // Only try Firestore if we have a real Firebase user
+      if (auth.currentUser) {
+        await setDoc(doc(db, 'households', householdId), householdData, { merge: true });
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        activeHouseholdId: householdId
-      });
+        // Use setDoc with merge: true to be more resilient
+        await setDoc(doc(db, 'users', user.uid), {
+          activeHouseholdId: householdId
+        }, { merge: true });
+      }
 
-      // SYNC TO LOCALDB
+      // ALWAYS SYNC TO LOCALDB
       await localDB.households.put({ ...householdData, id: householdId } as Household);
       await localDB.users.update(user.uid, { activeHouseholdId: householdId });
 

@@ -150,7 +150,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       email,
       fullName: name,
       createdAt: new Date() as any,
-      isAdmin: true,
+      isAdmin: email === 'ersinozbucak@gmail.com',
       kvkkAccepted: true,
       kvkkAcceptedAt: new Date() as any,
     };
@@ -176,7 +176,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           email: u.email || '',
           fullName: u.displayName || 'Kullanıcı',
           createdAt: new Date() as any,
-          isAdmin: true,
+          isAdmin: u.email === 'ersinozbucak@gmail.com',
           kvkkAccepted: true,
           kvkkAcceptedAt: new Date() as any,
         };
