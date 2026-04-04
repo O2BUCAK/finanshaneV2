@@ -91,8 +91,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     <div className="space-y-6 pb-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-black tracking-tighter text-foreground">Hesaplarım</h1>
-          <p className="text-muted-foreground text-xs font-medium mt-0.5">Tüm banka, kripto ve sosyal hesaplarınızın yönetimi</p>
+          <h1 className="text-3xl font-black tracking-tighter text-foreground">Hesaplarım</h1>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Tüm banka, kripto ve sosyal hesaplarınızın yönetimi</p>
         </div>
         <button 
           onClick={onAddAccount}
@@ -116,7 +116,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredAccounts.map(account => (
           <motion.div 
             key={account.id}
@@ -127,67 +127,67 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           >
             <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full -mr-24 -mt-24 blur-3xl group-hover:bg-primary/10 transition-colors duration-700" />
             
-            <div className="p-10 space-y-10 relative z-10">
+            <div className="p-8 space-y-6 relative z-10">
               <div className="flex justify-between items-start">
-                <div className="flex items-center gap-6">
-                  <div className="w-20 h-20 bg-secondary/50 rounded-[2rem] flex items-center justify-center border border-border/50 shadow-sm group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-primary/10 transition-all duration-500">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-secondary/50 rounded-2xl flex items-center justify-center border border-border/50 shadow-sm group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-primary/10 transition-all duration-500">
                     {getBranchIcon(account.branch || '')}
                   </div>
                   <div>
-                    <h3 className="font-black text-2xl text-foreground group-hover:text-primary transition-colors tracking-tighter leading-tight">{account.name}</h3>
-                    <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mt-2">{account.institution || 'Diğer Kurum'}</p>
+                    <h3 className="font-black text-xl text-foreground group-hover:text-primary transition-colors tracking-tighter leading-tight">{account.name}</h3>
+                    <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mt-1">{account.institution || 'Diğer Kurum'}</p>
                   </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   {account.apiConfig && (
                     <button 
                       onClick={() => handleSync(account)}
                       disabled={syncingIds.has(account.id)}
-                      className={`p-3.5 rounded-2xl transition-all duration-500 ${
+                      className={`p-2.5 rounded-xl transition-all duration-500 ${
                         syncingIds.has(account.id) 
                           ? 'bg-emerald-500/20 text-emerald-500 animate-spin' 
                           : 'bg-secondary/50 text-muted-foreground hover:text-emerald-500 border border-border/50 hover:bg-emerald-500/10 hover:border-emerald-500/30'
                       }`}
                       title="API ile Senkronize Et"
                     >
-                      <RefreshCw className="w-5 h-5" />
+                      <RefreshCw className="w-4 h-4" />
                     </button>
                   )}
                   <button 
                     onClick={() => toggleLocalPrivacy(account.id)}
-                    className={`p-3.5 border border-border/50 rounded-2xl transition-all duration-500 ${
+                    className={`p-2.5 border border-border/50 rounded-xl transition-all duration-500 ${
                       isAccountHidden(account.id)
                         ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30 shadow-lg shadow-emerald-500/10'
                         : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary'
                     }`}
                     title={isAccountHidden(account.id) ? 'Göster' : 'Gizle'}
                   >
-                    {isAccountHidden(account.id) ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                    {isAccountHidden(account.id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </button>
                   <button 
                     onClick={() => onEditAccount(account)}
-                    className="p-3.5 bg-secondary/50 text-muted-foreground hover:text-foreground border border-border/50 rounded-2xl transition-all duration-500 hover:bg-secondary"
+                    className="p-2.5 bg-secondary/50 text-muted-foreground hover:text-foreground border border-border/50 rounded-xl transition-all duration-500 hover:bg-secondary"
                     title="Düzenle"
                   >
-                    <Settings2 className="w-5 h-5" />
+                    <Settings2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="pt-10 border-t border-border/30">
+              <div className="pt-6 border-t border-border/30">
                 <div className="flex justify-between items-end">
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-4 opacity-60">
+                    <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-2 opacity-60">
                       {account.subType === 'credit_card' ? 'Güncel Borç' : 'Güncel Bakiye'}
                     </p>
-                    <p className={`text-5xl font-black tracking-tighter ${account.subType === 'credit_card' ? 'text-rose-500' : 'text-foreground'}`}>
+                    <p className={`text-3xl font-black tracking-tighter ${account.subType === 'credit_card' ? 'text-rose-500' : 'text-foreground'}`}>
                       {formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
                     </p>
                   </div>
                   {account.apiConfig?.lastSync && (
                     <div className="text-right">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-4 opacity-60">Son Senk.</p>
-                      <p className="text-sm font-black text-muted-foreground opacity-80">
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-2 opacity-60">Son Senk.</p>
+                      <p className="text-xs font-black text-muted-foreground opacity-80">
                         {new Date(account.apiConfig.lastSync).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -195,18 +195,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </div>
 
                 {account.subType === 'credit_card' && (
-                  <div className="mt-10 space-y-8 p-8 bg-zinc-950/30 rounded-[2.5rem] border border-border/50 relative overflow-hidden group/card-info hover:bg-zinc-950/50 transition-all duration-500">
+                  <div className="mt-6 space-y-4 p-6 bg-zinc-950/30 rounded-[2rem] border border-border/50 relative overflow-hidden group/card-info hover:bg-zinc-950/50 transition-all duration-500">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full -mr-16 -mt-16 blur-3xl transition-all duration-700 group-hover/card-info:bg-rose-500/10" />
                     
                     <div className="flex justify-between items-center relative z-10">
-                      <span className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kart Limiti</span>
-                      <span className="text-base font-black text-foreground">{formatWithEquivalent(account.creditLimit || 0, account.currency || 'TRY', isAccountHidden(account.id))}</span>
+                      <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kart Limiti</span>
+                      <span className="text-sm font-black text-foreground">{formatWithEquivalent(account.creditLimit || 0, account.currency || 'TRY', isAccountHidden(account.id))}</span>
                     </div>
                     <div className="flex justify-between items-center relative z-10">
-                      <span className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kalan Limit</span>
-                      <span className="text-base font-black text-emerald-500">{formatWithEquivalent((account.creditLimit || 0) - account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</span>
+                      <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kalan Limit</span>
+                      <span className="text-sm font-black text-emerald-500">{formatWithEquivalent((account.creditLimit || 0) - account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</span>
                     </div>
-                    <div className="h-3 w-full bg-secondary/50 rounded-full overflow-hidden relative z-10 p-0.5 border border-border/30">
+                    <div className="h-2 w-full bg-secondary/50 rounded-full overflow-hidden relative z-10 p-0.5 border border-border/30">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min((account.balance / (account.creditLimit || 1)) * 100, 100)}%` }}
@@ -214,14 +214,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                         className="h-full bg-gradient-to-r from-rose-500 to-rose-400 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.4)]" 
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-8 pt-2 relative z-10">
+                    <div className="grid grid-cols-2 gap-4 pt-1 relative z-10">
                       <div>
-                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-2">Güncel Borç</p>
-                        <p className="text-base font-black text-foreground">{formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</p>
+                        <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Güncel Borç</p>
+                        <p className="text-sm font-black text-foreground">{formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-2">Asgari Tutar</p>
-                        <p className="text-base font-black text-foreground">
+                        <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Asgari Tutar</p>
+                        <p className="text-sm font-black text-foreground">
                           {formatWithEquivalent(account.balance * ((account.creditLimit || 0) >= 25000 ? 0.4 : 0.2), account.currency || 'TRY', isAccountHidden(account.id))}
                         </p>
                       </div>
@@ -263,12 +263,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       </div>
 
       {filteredAccounts.length === 0 && (
-        <div className="text-center py-32 bg-secondary/20 border border-dashed border-border rounded-[3rem] group hover:bg-secondary/30 transition-all">
-          <div className="w-24 h-24 bg-secondary rounded-[2rem] flex items-center justify-center mx-auto mb-8 group-hover:scale-110 transition-transform duration-500 shadow-sm">
-            <Wallet className="w-10 h-10 text-muted-foreground" />
+        <div className="text-center py-24 bg-secondary/20 border border-dashed border-border rounded-[2.5rem] group hover:bg-secondary/30 transition-all">
+          <div className="w-20 h-20 bg-secondary rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-500 shadow-sm">
+            <Wallet className="w-8 h-8 text-muted-foreground" />
           </div>
-          <h3 className="text-2xl font-black text-foreground mb-3 tracking-tight">Hesap Bulunamadı</h3>
-          <p className="text-muted-foreground max-w-xs mx-auto font-medium">Arama kriterlerinize uygun hesap bulunamadı veya henüz hesap eklemediniz.</p>
+          <h3 className="text-xl font-black text-foreground mb-2 tracking-tight">Hesap Bulunamadı</h3>
+          <p className="text-muted-foreground max-w-xs mx-auto text-sm font-medium">Arama kriterlerinize uygun hesap bulunamadı veya henüz hesap eklemediniz.</p>
         </div>
       )}
     </div>

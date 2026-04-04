@@ -67,7 +67,8 @@ import { useExchangeRates } from './hooks/useExchangeRates';
 import { useAssetPrices } from './hooks/useAssetPrices';
 import { createIncomeSource, updateIncomeSource, updateExpectedIncome, createExpectedIncome } from './lib/incomeSources';
 import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, createInstallmentTransactions } from './lib/ledger';
-import { createExpenseSource } from './lib/expenseSources';
+import { createExpenseSource, updateExpenseSource, deleteExpenseSource } from './lib/expenseSources';
+import { createPlannedExpense, updatePlannedExpense, deletePlannedExpense } from './lib/plannedExpenses';
 import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense, Household, UserProfile, ExpenseSource } from './types';
 import { 
   db, 
@@ -1281,7 +1282,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   );
 };
 
-const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData, isPrivacyMode, defaultIsSubscription = false }: any) => {
+const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData, isPrivacyMode, defaultIsSubscription = false, defaultIsPlanned = false }: any) => {
   const { user } = useAuth();
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -1296,6 +1297,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
   const [isInstallment, setIsInstallment] = useState(false);
   const [installmentCount, setInstallmentCount] = useState('2');
   const [isSubscription, setIsSubscription] = useState(defaultIsSubscription);
+  const [isPlanned, setIsPlanned] = useState(defaultIsPlanned);
   const [periodDay, setPeriodDay] = useState(new Date().getDate().toString());
   const [loading, setLoading] = useState(false);
 
@@ -1304,22 +1306,28 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
       if (initialData) {
         setAmount(initialData.amount.toString());
         setCurrency(initialData.currency || 'TRY');
-        setDescription(initialData.description);
-        setDate(initialData.date.toISOString().split('T')[0]);
-        setDebitAccountId(initialData.debitAccountId);
-        setCreditAccountId(initialData.creditAccountId);
+        setDescription(initialData.description || initialData.title || '');
+        setDate(new Date(initialData.date || initialData.dueDate || new Date()).toISOString().split('T')[0]);
+        setDebitAccountId(initialData.debitAccountId || initialData.categoryId || '');
+        setCreditAccountId(initialData.creditAccountId || initialData.sourceAccountId || '');
         setCategoryId(initialData.categoryId);
-        setUserId(initialData.userId || user?.uid || '');
+        setUserId(initialData.userId || initialData.ownerId || user?.uid || '');
         setIsInstallment(initialData.isInstallment || false);
         setInstallmentCount(initialData.installmentCount?.toString() || '2');
-        setIsSubscription(false);
+        setIsSubscription(!!initialData.periodDay);
+        setIsPlanned(!!initialData.dueDate);
+        setPeriodDay(initialData.periodDay?.toString() || new Date().getDate().toString());
         
         // Determine type
-        const debitAcc = accounts.find((a: any) => a.id === initialData.debitAccountId);
-        const creditAcc = accounts.find((a: any) => a.id === initialData.creditAccountId);
-        if (debitAcc?.type === 'asset' && creditAcc?.type === 'asset') setType('transfer');
-        else if (debitAcc?.type === 'asset') setType('income');
-        else setType('expense');
+        if (initialData.dueDate || initialData.periodDay) {
+          setType('expense');
+        } else {
+          const debitAcc = accounts.find((a: any) => a.id === initialData.debitAccountId);
+          const creditAcc = accounts.find((a: any) => a.id === initialData.creditAccountId);
+          if (debitAcc?.type === 'asset' && creditAcc?.type === 'asset') setType('transfer');
+          else if (debitAcc?.type === 'asset') setType('income');
+          else setType('expense');
+        }
       } else {
         setAmount('');
         setCurrency('TRY');
@@ -1329,6 +1337,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         setIsInstallment(false);
         setInstallmentCount('2');
         setIsSubscription(defaultIsSubscription);
+        setIsPlanned(defaultIsPlanned);
         // Set defaults
         if (type === 'expense') {
           const defaultCat = categories.find((c: any) => c.type === 'expense');
@@ -1348,7 +1357,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         }
       }
     }
-  }, [isOpen, type, accounts, categories, initialData, user, defaultIsSubscription]);
+  }, [isOpen, type, accounts, categories, initialData, user, defaultIsSubscription, defaultIsPlanned]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1356,38 +1365,72 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
     setLoading(true);
 
     try {
-      const txData = {
-        description,
-        amount: parseFloat(amount),
-        currency,
-        date: new Date(date),
-        debitAccountId,
-        creditAccountId,
-        categoryId: type === 'transfer' ? 'transfer' : categoryId,
-        userId: userId || user.uid,
-      };
-
-      if (initialData) {
-        await updateLedgerTransaction(householdId, initialData.id, txData);
-      } else if (isInstallment && type === 'expense') {
-        await createInstallmentTransactions(householdId, txData, parseInt(installmentCount));
+      if (isPlanned && type === 'expense') {
+        const plannedData = {
+          title: description,
+          ownerId: userId || user.uid,
+          amount: parseFloat(amount),
+          currency,
+          dueDate: new Date(date),
+          status: initialData?.status || 'pending' as const,
+          categoryId,
+          sourceAccountId: creditAccountId || undefined,
+        };
+        if (initialData && initialData.dueDate) {
+          await updatePlannedExpense(householdId, initialData.id, plannedData);
+        } else {
+          await createPlannedExpense(householdId, plannedData);
+        }
       } else if (isSubscription && type === 'expense') {
-        // Create as a recurring expense source
-        await createExpenseSource(householdId, {
+        // Create or update as a recurring expense source
+        const sourceData = {
           name: description,
           amount: parseFloat(amount),
           currency,
-          flowType: 'fixed',
+          flowType: 'fixed' as const,
           periodDay: parseInt(periodDay),
           sourceAccountId: creditAccountId,
           categoryId,
           ownerId: userId || user.uid,
-          status: 'active'
-        });
-        // Also create the first transaction
-        await createLedgerTransaction(householdId, txData);
+          status: initialData?.status || 'active' as const
+        };
+
+        if (initialData && initialData.periodDay) {
+          await updateExpenseSource(householdId, initialData.id, sourceData);
+        } else {
+          await createExpenseSource(householdId, sourceData);
+          // Also create the first transaction if it's a new subscription
+          const txData = {
+            description,
+            amount: parseFloat(amount),
+            currency,
+            date: new Date(date),
+            debitAccountId,
+            creditAccountId,
+            categoryId,
+            userId: userId || user.uid,
+          };
+          await createLedgerTransaction(householdId, txData);
+        }
       } else {
-        await createLedgerTransaction(householdId, txData);
+        const txData = {
+          description,
+          amount: parseFloat(amount),
+          currency,
+          date: new Date(date),
+          debitAccountId,
+          creditAccountId,
+          categoryId: type === 'transfer' ? 'transfer' : categoryId,
+          userId: userId || user.uid,
+        };
+
+        if (initialData) {
+          await updateLedgerTransaction(householdId, initialData.id, txData);
+        } else if (isInstallment && type === 'expense') {
+          await createInstallmentTransactions(householdId, txData, parseInt(installmentCount));
+        } else {
+          await createLedgerTransaction(householdId, txData);
+        }
       }
       onClose();
     } catch (error) {
@@ -1411,7 +1454,10 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"
       >
         <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-zinc-900 z-10">
-          <h3 className="text-xl font-bold">Yeni İşlem</h3>
+          <h3 className="text-xl font-bold">
+            {initialData ? (isPlanned ? 'Planı Düzenle' : isSubscription ? 'Aboneliği Düzenle' : 'İşlemi Düzenle') : 
+             (isPlanned ? 'Yeni Plan' : isSubscription ? 'Yeni Abonelik' : 'Yeni İşlem')}
+          </h3>
           <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-xl transition-colors">
             <X className="w-5 h-5 text-zinc-300" />
           </button>
@@ -1519,32 +1565,22 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
               {isInstallment && (
                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
                   <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Taksit Sayısı</label>
-                  <div className="flex gap-2">
-                    {[2, 3, 4, 6, 9, 12].map(num => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setInstallmentCount(num.toString())}
-                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                          installmentCount === num.toString() 
-                            ? 'bg-emerald-500 text-white' 
-                            : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
-                        }`}
-                      >
-                        {num}
-                      </button>
-                    ))}
+                  <div className="relative">
                     <input
                       type="number"
                       min="2"
                       max="60"
                       value={installmentCount}
                       onChange={(e) => setInstallmentCount(e.target.value)}
-                      className="w-16 bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-2 text-xs text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      placeholder="Taksit sayısı girin (2-60)"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white font-bold"
                     />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                      AY
+                    </div>
                   </div>
-                  <p className="text-[10px] text-zinc-400 italic">
-                    * Toplam {amount || '0'} {currency} tutarı {installmentCount} taksite bölünecek. 
+                  <p className="text-[10px] text-zinc-400 italic px-1">
+                    * Toplam {amount || '0'} {currency} tutarı {installmentCount || '0'} taksite bölünecek. 
                     Her ay {(parseFloat(amount || '0') / parseInt(installmentCount || '1')).toFixed(2)} {currency} olarak kaydedilecek.
                   </p>
                 </div>
@@ -1570,32 +1606,46 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
                 {isSubscription && (
                   <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
                     <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Her Ayın Kaçında?</label>
-                    <div className="flex gap-2 flex-wrap">
-                      {[1, 5, 10, 15, 20, 25, 28].map(day => (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => setPeriodDay(day.toString())}
-                          className={`w-10 h-10 rounded-xl text-xs font-bold transition-all ${
-                            periodDay === day.toString() 
-                              ? 'bg-emerald-500 text-white' 
-                              : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      ))}
+                    <div className="relative">
                       <input
                         type="number"
                         min="1"
                         max="31"
                         value={periodDay}
                         onChange={(e) => setPeriodDay(e.target.value)}
-                        className="w-12 h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-2 text-xs text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        placeholder="1-31 arası gün girin"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white font-bold"
                       />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                        GÜN
+                      </div>
                     </div>
+                    <p className="text-[10px] text-zinc-500 italic px-1">
+                      * Ödeme her ayın bu gününde otomatik olarak gerçekleşecektir.
+                    </p>
                   </div>
                 )}
+              </div>
+
+              <div className="pt-2 border-t border-zinc-800/50 mt-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPlanned}
+                    onChange={(e) => {
+                      setIsPlanned(e.target.checked);
+                      if (e.target.checked) {
+                        setIsInstallment(false);
+                        setIsSubscription(false);
+                      }
+                    }}
+                    className="w-5 h-5 rounded border-zinc-700 text-emerald-500 focus:ring-emerald-500/20 bg-zinc-900"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-zinc-200">Planlanan Gider</span>
+                    <span className="text-xs text-zinc-400">Gelecekte yapılacak tek seferlik bir harcama</span>
+                  </div>
+                </label>
               </div>
             </div>
           )}
@@ -2387,6 +2437,7 @@ const Dashboard = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txModalIsSubscription, setTxModalIsSubscription] = useState(false);
+  const [isTxModalPlanned, setIsTxModalPlanned] = useState(false);
   const [isAccModalOpen, setIsAccModalOpen] = useState(false);
   const logSecurityAction = async (action: string, details?: string) => {
     if (!user) return;
@@ -3078,6 +3129,15 @@ const Dashboard = () => {
                 setIsTxModalOpen(true);
               }}
               onAddPlannedExpense={() => {
+                setIsTxModalPlanned(true);
+                setIsTxModalOpen(true);
+              }}
+              onEditPlannedExpense={(expense) => {
+                setEditingTransaction(expense as any);
+                setIsTxModalOpen(true);
+              }}
+              onEditExpenseSource={(source) => {
+                setEditingTransaction(source as any);
                 setIsTxModalOpen(true);
               }}
               isPrivacyMode={isPrivacyMode}
@@ -3266,6 +3326,7 @@ const Dashboard = () => {
             setIsTxModalOpen(false); 
             setEditingTransaction(null); 
             setTxModalIsSubscription(false);
+            setIsTxModalPlanned(false);
           }} 
           householdId={household?.id}
           accounts={accounts}
@@ -3274,6 +3335,7 @@ const Dashboard = () => {
           initialData={editingTransaction}
           isPrivacyMode={isPrivacyMode}
           defaultIsSubscription={txModalIsSubscription}
+          defaultIsPlanned={isTxModalPlanned}
         />
         <AccountModal
           isOpen={isAccModalOpen}

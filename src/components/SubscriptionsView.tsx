@@ -44,21 +44,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Abonelikler</h1>
-          <p className="text-zinc-400 font-medium mt-1">Düzenli ödemeleriniz ve abonelik planlarınız</p>
-        </div>
-        <button 
-          onClick={onAddSubscription}
-          className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-emerald-500/20"
-        >
-          <Plus className="w-5 h-5" />
-          Yeni Abonelik Ekle
-        </button>
-      </div>
-
+    <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {expenseSources.map(source => {
           const account = accounts.find(a => a.id === source.sourceAccountId);
@@ -69,9 +55,9 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               key={source.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-zinc-700 transition-all group"
+              className="corporate-card overflow-hidden group"
             >
-              <div className="p-6 space-y-4">
+              <div className="p-8 space-y-6">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800">

@@ -23,6 +23,8 @@ interface ExpenseViewProps {
   onAddTransaction: () => void;
   onAddSubscription: () => void;
   onAddPlannedExpense: () => void;
+  onEditPlannedExpense?: (expense: PlannedExpense) => void;
+  onEditExpenseSource?: (source: any) => void;
   isPrivacyMode?: boolean;
 }
 
@@ -37,6 +39,8 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
   onAddTransaction,
   onAddSubscription,
   onAddPlannedExpense,
+  onEditPlannedExpense,
+  onEditExpenseSource,
   isPrivacyMode = false
 }) => {
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
@@ -59,11 +63,11 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
   });
 
   return (
-    <div className="space-y-12 pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Gider Yönetimi</h1>
-          <p className="text-zinc-400 font-medium mt-1">Harcamalarınız, abonelikleriniz ve planlanan giderleriniz</p>
+          <h1 className="text-3xl font-black tracking-tighter text-foreground">Gider Yönetimi</h1>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Harcamalarınız, abonelikleriniz ve planlanan giderleriniz</p>
         </div>
         <div className="flex gap-2">
           <button 
@@ -83,12 +87,6 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
             <Target className="w-5 h-5 text-blue-500" />
             Planlanan Giderler
           </h2>
-          <button 
-            onClick={onAddPlannedExpense}
-            className="text-xs text-blue-500 font-bold hover:underline"
-          >
-            + Yeni Plan
-          </button>
         </div>
         <PlannedExpenses 
           householdId={householdId}
@@ -96,6 +94,8 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
           categories={categories}
           members={members}
           isPrivacyMode={isPrivacyMode}
+          onEditPlannedExpense={onEditPlannedExpense}
+          onEditExpenseSource={onEditExpenseSource}
         />
       </div>
 
@@ -106,12 +106,6 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
             <Clock className="w-5 h-5 text-emerald-500" />
             Düzenli Ödemeler & Abonelikler
           </h2>
-          <button 
-            onClick={onAddSubscription}
-            className="text-xs text-emerald-500 font-bold hover:underline"
-          >
-            + Yeni Abonelik
-          </button>
         </div>
         <SubscriptionsView 
           householdId={householdId}
@@ -130,7 +124,7 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
           <ArrowDownLeft className="w-5 h-5 text-rose-500" />
           Son Harcamalar
         </h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
+        <div className="corporate-card overflow-hidden">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-zinc-800">

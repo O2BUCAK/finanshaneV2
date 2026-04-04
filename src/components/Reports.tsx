@@ -128,10 +128,10 @@ export const Reports: React.FC<ReportsProps> = ({
 
   return (
     <div className="space-y-6 pb-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="text-2xl font-black tracking-tighter text-foreground">Nakit Akış Analizi</h2>
-          <p className="text-muted-foreground text-xs font-medium mt-0.5">Gelir ve giderlerinizin görsel akış diyagramı</p>
+          <h1 className="text-3xl font-black tracking-tighter text-foreground">Nakit Akış Analizi</h1>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Gelir ve giderlerinizin görsel akış diyagramı</p>
         </div>
         
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -194,7 +194,7 @@ export const Reports: React.FC<ReportsProps> = ({
         </div>
       </div>
 
-      <div className="corporate-card p-6 min-h-[500px] flex items-center justify-center relative overflow-hidden">
+      <div className="corporate-card p-8 min-h-[500px] flex items-center justify-center relative overflow-hidden">
         {sankeyData.nodes.length > 0 ? (
           <div className="w-full h-[400px]">
             <SankeyChart 

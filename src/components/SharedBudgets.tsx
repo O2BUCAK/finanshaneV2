@@ -924,11 +924,11 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h3 className="text-2xl font-bold">Grup Harcamaları</h3>
-          <p className="text-zinc-400">Arkadaşlarınızla veya ailenizle ortak harcamaları kolayca bölüşün.</p>
+          <h1 className="text-3xl font-black tracking-tighter text-foreground">Grup Harcamaları</h1>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Arkadaşlarınızla veya ailenizle ortak harcamaları kolayca bölüşün.</p>
         </div>
         <div className="flex items-center gap-3">
           <button

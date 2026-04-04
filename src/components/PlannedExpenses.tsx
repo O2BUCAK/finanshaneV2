@@ -16,6 +16,10 @@ interface PlannedExpensesProps {
   accounts: Account[];
   members?: Record<string, any>;
   isPrivacyMode?: boolean;
+  onAddPlannedExpense?: () => void;
+  onAddSubscription?: () => void;
+  onEditPlannedExpense?: (expense: PlannedExpense) => void;
+  onEditExpenseSource?: (source: any) => void;
 }
 
 const EXPENSE_FLOW_OPTIONS = [
@@ -24,7 +28,17 @@ const EXPENSE_FLOW_OPTIONS = [
   { id: 'variable', label: 'Değişken', description: 'Fatura gibi miktarı değişen düzenli giderler' },
 ];
 
-export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, categories, accounts, members, isPrivacyMode = false }) => {
+export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ 
+  householdId, 
+  categories, 
+  accounts, 
+  members, 
+  isPrivacyMode = false,
+  onAddPlannedExpense,
+  onAddSubscription,
+  onEditPlannedExpense,
+  onEditExpenseSource
+}) => {
   const { user } = useAuth();
   const { data: plannedExpenses, loading: plannedLoading } = useCollection<PlannedExpense>(
     householdId ? `households/${householdId}/plannedExpenses` : ''
@@ -43,138 +57,22 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
   const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
 
   const [activeView, setActiveView] = useState<'planned' | 'recurring'>('planned');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<PlannedExpense | null>(null);
-  const [editingSource, setEditingSource] = useState<ExpenseSource | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<{ id: string; type: 'planned' | 'source' | 'expected' } | null>(null);
 
-  // Form State for Planned
-  const [title, setTitle] = useState('');
-  const [ownerId, setOwnerId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('TRY');
-  const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
-  const [categoryId, setCategoryId] = useState('');
-  const [sourceAccountId, setSourceAccountId] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Form State for Source
-  const [sourceName, setSourceName] = useState('');
-  const [sourceOwnerId, setSourceOwnerId] = useState('');
-  const [sourceFlowType, setSourceFlowType] = useState<ExpenseFlowType>('fixed');
-  const [sourceAmount, setSourceAmount] = useState('');
-  const [sourceCurrency, setSourceCurrency] = useState('TRY');
-  const [sourceCategoryId, setSourceCategoryId] = useState('');
-  const [sourceAccId, setSourceAccId] = useState('');
-  const [sourcePeriodDay, setSourcePeriodDay] = useState('1');
-
   const openModal = (expense?: PlannedExpense) => {
     if (expense) {
-      setEditingExpense(expense);
-      setTitle(expense.title);
-      setOwnerId(expense.ownerId || '');
-      setAmount(expense.amount.toString());
-      setCurrency(expense.currency);
-      setDueDate(new Date(expense.dueDate).toISOString().split('T')[0]);
-      setCategoryId(expense.categoryId);
-      setSourceAccountId(expense.sourceAccountId || '');
+      onEditPlannedExpense?.(expense);
     } else {
-      setEditingExpense(null);
-      setTitle('');
-      setOwnerId(user?.uid || Object.keys(members || {})[0] || '');
-      setAmount('');
-      setCurrency('TRY');
-      setDueDate(new Date().toISOString().split('T')[0]);
-      setCategoryId(categories.find(c => c.type === 'expense')?.id || '');
-      setSourceAccountId('');
+      onAddPlannedExpense?.();
     }
-    setIsModalOpen(true);
   };
 
   const openSourceModal = (source?: ExpenseSource) => {
     if (source) {
-      setEditingSource(source);
-      setSourceName(source.name);
-      setSourceOwnerId(source.ownerId);
-      setSourceFlowType(source.flowType);
-      setSourceAmount(source.amount.toString());
-      setSourceCurrency(source.currency);
-      setSourceCategoryId(source.categoryId);
-      setSourceAccId(source.sourceAccountId);
-      setSourcePeriodDay(source.periodDay?.toString() || '1');
+      onEditExpenseSource?.(source);
     } else {
-      setEditingSource(null);
-      setSourceName('');
-      setSourceOwnerId(user?.uid || Object.keys(members || {})[0] || '');
-      setSourceFlowType('fixed');
-      setSourceAmount('');
-      setSourceCurrency('TRY');
-      setSourceCategoryId(categories.find(c => c.type === 'expense')?.id || '');
-      setSourceAccId('');
-      setSourcePeriodDay('1');
-    }
-    setIsSourceModalOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!householdId || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      const expenseData = {
-        title,
-        ownerId,
-        amount: parseFloat(amount),
-        currency,
-        dueDate: new Date(dueDate),
-        status: editingExpense ? editingExpense.status : 'pending' as const,
-        categoryId,
-        sourceAccountId: sourceAccountId || undefined,
-      };
-
-      if (editingExpense) {
-        await updatePlannedExpense(householdId, editingExpense.id, expenseData);
-      } else {
-        await createPlannedExpense(householdId, expenseData);
-      }
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error("Error saving planned expense:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleSourceSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!householdId || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      const sourceData = {
-        name: sourceName,
-        ownerId: sourceOwnerId,
-        flowType: sourceFlowType,
-        amount: parseFloat(sourceAmount),
-        currency: sourceCurrency,
-        categoryId: sourceCategoryId,
-        sourceAccountId: sourceAccId,
-        periodDay: parseInt(sourcePeriodDay),
-      };
-
-      if (editingSource) {
-        await updateExpenseSource(householdId, editingSource.id, sourceData);
-      } else {
-        await createExpenseSource(householdId, sourceData);
-      }
-      setIsSourceModalOpen(false);
-    } catch (error) {
-      console.error("Error saving expense source:", error);
-    } finally {
-      setIsSubmitting(false);
+      onAddSubscription?.();
     }
   };
 
@@ -280,22 +178,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
   const progress = totalPlanned > 0 ? (totalPaid / totalPlanned) * 100 : 0;
 
   return (
-    <div className="space-y-8 pb-12">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Bütçe Planlama</h1>
-          <p className="text-muted-foreground font-medium mt-1">Gelecek harcamalarınızı ve aboneliklerinizi yönetin.</p>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => activeView === 'planned' ? openModal() : openSourceModal()}
-            className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
-          >
-            <Plus className="w-5 h-5" /> {activeView === 'planned' ? 'Yeni Plan' : 'Yeni Abonelik/Kira'}
-          </button>
-        </div>
-      </div>
-
+    <div className="space-y-6">
       {/* Tabs */}
       <div className="flex p-1 bg-secondary rounded-2xl w-fit">
         <button
@@ -314,7 +197,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="corporate-card p-6">
+        <div className="corporate-card p-8">
           <div className="flex items-center gap-3 text-muted-foreground mb-3">
             <Target className="w-5 h-5" />
             <span className="text-xs font-bold uppercase tracking-wider">Toplam Planlanan</span>
@@ -323,7 +206,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
             {formatWithEquivalent(totalPlanned, 'TRY')}
           </div>
         </div>
-        <div className="corporate-card p-6">
+        <div className="corporate-card p-8">
           <div className="flex items-center gap-3 text-muted-foreground mb-3">
             <Check className="w-5 h-5 text-emerald-500" />
             <span className="text-xs font-bold uppercase tracking-wider">Ödenen</span>
@@ -332,7 +215,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
             {formatWithEquivalent(totalPaid, 'TRY')}
           </div>
         </div>
-        <div className="corporate-card p-6">
+        <div className="corporate-card p-8">
           <div className="flex items-center gap-3 text-muted-foreground mb-3">
             <TrendingDown className="w-5 h-5 text-destructive" />
             <span className="text-xs font-bold uppercase tracking-wider">Kalan Ödeme</span>
@@ -609,306 +492,6 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({ householdId, c
           </div>
         )}
       </div>
-
-      {/* Modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-card border border-border rounded-3xl shadow-2xl overflow-hidden"
-            >
-              <div className="p-6 border-b border-border flex justify-between items-center bg-secondary/30">
-                <h2 className="text-xl font-bold text-foreground">
-                  {editingExpense ? 'Planı Düzenle' : 'Yeni Harcama Planı'}
-                </h2>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-secondary rounded-xl text-muted-foreground">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="p-8 space-y-5">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Harcamayı Yapan</label>
-                  <select 
-                    value={ownerId}
-                    onChange={(e) => setOwnerId(e.target.value)}
-                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
-                  >
-                    {Object.entries(members || {}).map(([id, m]: [string, any]) => (
-                      <option key={id} value={id}>{m.displayName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Harcama Başlığı</label>
-                  <input 
-                    type="text"
-                    required
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Örn: Kira, Elektrik Faturası..."
-                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Miktar</label>
-                    <input 
-                      type="text"
-                      required
-                      value={formatAmount(amount)}
-                      onChange={(e) => setAmount(parseAmount(cleanAmountInput(e.target.value)))}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-bold"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Para Birimi</label>
-                    <select 
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-bold"
-                    >
-                      <option value="TRY">TRY (₺)</option>
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Vade Tarihi</label>
-                    <input 
-                      type="date"
-                      required
-                      value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kategori</label>
-                    <select 
-                      required
-                      value={categoryId}
-                      onChange={(e) => setCategoryId(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
-                    >
-                      {categories.filter(c => c.type === 'expense').map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Ödeme Hesabı (Opsiyonel)</label>
-                  <select 
-                    value={sourceAccountId}
-                    onChange={(e) => setSourceAccountId(e.target.value)}
-                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
-                  >
-                    <option value="">Hesap Seçilmedi</option>
-                    {accounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>{acc.name} ({formatWithEquivalent(acc.balance, acc.currency || 'TRY')})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="pt-6 flex gap-4">
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 px-6 py-3 rounded-xl bg-secondary text-foreground font-bold hover:bg-secondary/80 transition-all border border-border"
-                  >
-                    İptal
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-[2] px-8 py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
-                  >
-                    {isSubmitting ? 'Kaydediliyor...' : editingExpense ? 'Güncelle' : 'Planı Kaydet'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      {/* Source Modal */}
-      <AnimatePresence>
-        {isSourceModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSourceModalOpen(false)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-card border border-border rounded-3xl shadow-2xl overflow-hidden"
-            >
-              <div className="p-6 border-b border-border flex justify-between items-center bg-secondary/30">
-                <h2 className="text-xl font-bold text-foreground">
-                  {editingSource ? 'Düzenli Ödemeyi Düzenle' : 'Yeni Düzenli Ödeme Kaynağı'}
-                </h2>
-                <button onClick={() => setIsSourceModalOpen(false)} className="p-2 hover:bg-secondary rounded-xl text-muted-foreground">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSourceSubmit} className="p-8 space-y-5">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Sorumlu</label>
-                  <select 
-                    value={sourceOwnerId}
-                    onChange={(e) => setSourceOwnerId(e.target.value)}
-                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
-                  >
-                    {Object.entries(members || {}).map(([id, m]: [string, any]) => (
-                      <option key={id} value={id}>{m.displayName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Ödeme Adı</label>
-                  <input 
-                    type="text"
-                    required
-                    value={sourceName}
-                    onChange={(e) => setSourceName(e.target.value)}
-                    placeholder="Örn: Ev Kirası, Netflix, İnternet..."
-                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Ödeme Türü</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {EXPENSE_FLOW_OPTIONS.map(option => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => setSourceFlowType(option.id as ExpenseFlowType)}
-                        className={`p-3 rounded-xl border text-center transition-all ${
-                          sourceFlowType === option.id 
-                            ? 'bg-primary/10 border-primary text-primary' 
-                            : 'bg-secondary border-border text-muted-foreground hover:border-primary/50'
-                        }`}
-                      >
-                        <div className="text-xs font-bold">{option.label}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Miktar</label>
-                    <input 
-                      type="text"
-                      required
-                      value={formatAmount(sourceAmount)}
-                      onChange={(e) => setSourceAmount(parseAmount(cleanAmountInput(e.target.value)))}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-bold"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Para Birimi</label>
-                    <select 
-                      value={sourceCurrency}
-                      onChange={(e) => setSourceCurrency(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-bold"
-                    >
-                      <option value="TRY">TRY (₺)</option>
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Her Ayın Günü</label>
-                    <input 
-                      type="number"
-                      min="1"
-                      max="31"
-                      required
-                      value={sourcePeriodDay}
-                      onChange={(e) => setSourcePeriodDay(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kategori</label>
-                    <select 
-                      required
-                      value={sourceCategoryId}
-                      onChange={(e) => setSourceCategoryId(e.target.value)}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
-                    >
-                      {categories.filter(c => c.type === 'expense').map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Ödeme Yapılacak Hesap</label>
-                  <select 
-                    required
-                    value={sourceAccId}
-                    onChange={(e) => setSourceAccId(e.target.value)}
-                    className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none font-medium"
-                  >
-                    <option value="">Hesap Seçin</option>
-                    {accounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>{acc.name} ({formatWithEquivalent(acc.balance, acc.currency || 'TRY')})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="pt-6 flex gap-4">
-                  <button 
-                    type="button"
-                    onClick={() => setIsSourceModalOpen(false)}
-                    className="flex-1 px-6 py-3 rounded-xl bg-secondary text-foreground font-bold hover:bg-secondary/80 transition-all border border-border"
-                  >
-                    İptal
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-[2] px-8 py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
-                  >
-                    {isSubmitting ? 'Kaydediliyor...' : editingSource ? 'Güncelle' : 'Kaynağı Kaydet'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>

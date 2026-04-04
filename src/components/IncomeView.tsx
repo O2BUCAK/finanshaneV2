@@ -89,11 +89,11 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
   });
 
   return (
-    <div className="space-y-8 pb-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Gelir Yönetimi</h1>
-          <p className="text-zinc-400 font-medium mt-1">Gelir kaynaklarınız ve beklenen ödemeleriniz</p>
+          <h1 className="text-3xl font-black tracking-tighter text-foreground">Gelir Yönetimi</h1>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Gelir kaynaklarınız ve beklenen ödemeleriniz</p>
         </div>
         <button 
           onClick={onAddIncome}
@@ -110,14 +110,14 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
           <Calendar className="w-5 h-5 text-emerald-500" />
           Beklenen Gelirler
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {pendingIncomes.length === 0 && (
             <div className="col-span-full p-8 bg-zinc-900/50 border border-zinc-800 rounded-3xl text-center">
               <p className="text-zinc-500">Yakın zamanda beklenen bir gelir bulunmuyor.</p>
             </div>
           )}
           {pendingIncomes.map(income => (
-            <div key={income.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl hover:border-emerald-500/30 transition-all group">
+            <div key={income.id} className="corporate-card p-8 relative group overflow-hidden">
               <div className="flex justify-between items-start mb-4">
                 <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
                   <TrendingUp className="w-5 h-5 text-emerald-500" />
@@ -202,41 +202,44 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
           <Briefcase className="w-5 h-5 text-blue-500" />
           Aktif Gelir Kaynakları
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {incomeSources.map(source => (
             <div 
               key={source.id} 
               onClick={() => onEditIncome(source)}
-              className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl hover:border-emerald-500/30 transition-all cursor-pointer group"
+              className="corporate-card p-8 relative group overflow-hidden cursor-pointer"
             >
-              <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                    source.flowType === 'fixed' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'
-                  }`}>
-                    {source.flowType === 'fixed' ? 'Sabit' : source.flowType === 'variable' ? 'Değişken' : 'Spot'}
-                  </span>
-                  <span className="text-xs text-zinc-500">Her ayın {source.periodDay}. günü</span>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
+              <div className="relative z-10">
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest ${
+                      source.flowType === 'fixed' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'
+                    }`}>
+                      {source.flowType === 'fixed' ? 'Sabit' : source.flowType === 'variable' ? 'Değişken' : 'Spot'}
+                    </span>
+                    <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Her ayın {source.periodDay}. günü</span>
+                  </div>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteConfirm({
+                        id: source.id,
+                        type: 'source',
+                        title: 'Gelir Kaynağını Sil',
+                        message: `${source.name} gelir kaynağını ve buna bağlı tüm bekleyen gelecek gelirleri silmek istediğinizden emin misiniz?`
+                      });
+                    }}
+                    className="p-1.5 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteConfirm({
-                      id: source.id,
-                      type: 'source',
-                      title: 'Gelir Kaynağını Sil',
-                      message: `${source.name} gelir kaynağını ve buna bağlı tüm bekleyen gelecek gelirleri silmek istediğinizden emin misiniz?`
-                    });
-                  }}
-                  className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <h3 className="font-black text-foreground tracking-tight">{source.name}</h3>
+                <p className="text-xl font-black text-foreground mt-1 tracking-tighter">
+                  {formatWithEquivalent(source.amount, source.currency || 'TRY')}
+                </p>
               </div>
-              <h3 className="font-bold text-white">{source.name}</h3>
-              <p className="text-lg font-bold text-zinc-300 mt-1">
-                {formatWithEquivalent(source.amount, source.currency || 'TRY')}
-              </p>
             </div>
           ))}
         </div>
@@ -248,7 +251,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
           <ArrowUpRight className="w-5 h-5 text-emerald-500" />
           Son Gelir İşlemleri
         </h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
+        <div className="corporate-card overflow-hidden">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-zinc-800">
