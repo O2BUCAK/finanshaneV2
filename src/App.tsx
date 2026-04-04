@@ -1826,7 +1826,7 @@ const Login = () => {
             <Wallet className="w-12 h-12 text-emerald-500" />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">FinansHane | Aile Bütçe Takip</h1>
-          <p className="text-zinc-400">Güvenli ve şifreli ev finansal yönetim sistemi.</p>
+          <p className="text-zinc-400">Güvenli ve şifreli ev finansal yönetim sistemi. Giriş yaparak veya yeni hesap oluşturarak başlayın.</p>
         </div>
 
         <div className="space-y-6 bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 shadow-2xl">
@@ -1860,7 +1860,7 @@ const Login = () => {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            <span>Google ile Giriş Yap</span>
+            <span>Google ile Devam Et</span>
           </button>
 
           <div className="relative">
@@ -1868,7 +1868,7 @@ const Login = () => {
               <div className="w-full border-t border-zinc-800"></div>
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-zinc-900 px-2 text-zinc-500">Veya Yerel Giriş</span>
+              <span className="bg-zinc-900 px-2 text-zinc-500">Veya E-posta ile Devam Et</span>
             </div>
           </div>
 
@@ -1923,7 +1923,7 @@ const Login = () => {
               disabled={isLoggingIn}
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoggingIn ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
+              {isLoggingIn ? 'İşleniyor...' : 'Giriş Yap veya Kayıt Ol'}
             </button>
           </form>
         </div>
