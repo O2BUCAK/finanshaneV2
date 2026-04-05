@@ -85,6 +85,8 @@ import {
   orderBy 
 } from './lib/firebase';
 
+import { handleFirestoreError, OperationType } from './lib/error-handler';
+
 import { Dashboard as DashboardView } from './components/Dashboard';
 import { Reports } from './components/Reports';
 import { SharedBudgets } from './components/SharedBudgets';
@@ -2130,11 +2132,25 @@ const JoinOrCreateHousehold = () => {
     e.preventDefault();
     if (!user || !joinCode.trim() || loading) return;
 
+    // Cloud households require Firebase Auth
+    if (!auth.currentUser) {
+      setError('Bulut hanelerine katılmak için lütfen Google ile giriş yapın.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const q = query(collection(db, 'households'), where('joinCode', '==', joinCode.trim().toUpperCase()));
-      const snap = await getDocs(q);
+      let snap;
+      try {
+        snap = await getDocs(q);
+      } catch (err: any) {
+        if (err.code === 'permission-denied') {
+          handleFirestoreError(err, OperationType.LIST, 'households');
+        }
+        throw err;
+      }
 
       if (snap.empty) {
         setError('Geçersiz katılım kodu.');
@@ -2169,6 +2185,7 @@ const JoinOrCreateHousehold = () => {
         } catch (err: any) {
           console.error('Household update error:', err);
           if (err.code === 'permission-denied') {
+            handleFirestoreError(err, OperationType.UPDATE, `households/${householdId}`);
             setError('Hane güncellenemedi. Lütfen hane sahibi ile iletişime geçin.');
           } else {
             throw err;
@@ -2185,6 +2202,7 @@ const JoinOrCreateHousehold = () => {
         } catch (err: any) {
           console.error('User profile update error:', err);
           if (err.code === 'permission-denied') {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
             setError('Profil güncellenemedi. Lütfen tekrar deneyin.');
           } else {
             throw err;
@@ -2216,10 +2234,17 @@ const JoinOrCreateHousehold = () => {
 
   const handleCreate = async () => {
     if (!user || loading) return;
+    
+    // Cloud households require Firebase Auth
+    if (!auth.currentUser) {
+      setError('Bulut haneleri oluşturmak için lütfen Google ile giriş yapın.');
+      return;
+    }
+
     setLoading(true);
     try {
       const householdId = `household-${user.uid}`;
-      const newJoinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const newJoinCode = Math.random().toString(36).substring(2, 8).padEnd(6, '0').toUpperCase();
       
       const householdData = {
         name: `${user.displayName?.split(' ')[0]} Ailesi`,
@@ -2240,12 +2265,26 @@ const JoinOrCreateHousehold = () => {
 
       // Only try Firestore if we have a real Firebase user
       if (auth.currentUser) {
-        await setDoc(doc(db, 'households', householdId), householdData, { merge: true });
+        try {
+          await setDoc(doc(db, 'households', householdId), householdData, { merge: true });
+        } catch (err: any) {
+          if (err.code === 'permission-denied') {
+            handleFirestoreError(err, OperationType.WRITE, `households/${householdId}`);
+          }
+          throw err;
+        }
 
         // Use setDoc with merge: true to be more resilient
-        await setDoc(doc(db, 'users', user.uid), {
-          activeHouseholdId: householdId
-        }, { merge: true });
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            activeHouseholdId: householdId
+          }, { merge: true });
+        } catch (err: any) {
+          if (err.code === 'permission-denied') {
+            handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+          }
+          throw err;
+        }
       }
 
       // ALWAYS SYNC TO LOCALDB

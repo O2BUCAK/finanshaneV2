@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { db, auth, googleProvider, onAuthStateChanged, signInWithPopup, signOut, browserPopupRedirectResolver, doc, getDoc, setDoc, collection, getDocs } from '../lib/firebase';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 import { User } from 'firebase/auth';
 import { localDB } from '../db';
 import { Household, UserProfile, Account, Transaction, Category, IncomeSource, ExpectedIncome, PlannedExpense, SharedBudget } from '../types';
@@ -180,7 +181,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           kvkkAccepted: true,
           kvkkAcceptedAt: new Date() as any,
         };
-        await setDoc(doc(db, 'users', u.uid), profileData);
+        try {
+          await setDoc(doc(db, 'users', u.uid), profileData);
+        } catch (err: any) {
+          if (err.code === 'permission-denied') {
+            handleFirestoreError(err, OperationType.WRITE, `users/${u.uid}`);
+          }
+          throw err;
+        }
       }
 
       // Save to localDB
