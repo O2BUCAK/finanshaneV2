@@ -167,11 +167,27 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "date", "participants", "expenses", "isSettled", "createdAt"]
+    },
+    "JoinRequest": {
+      "title": "Join Request",
+      "description": "A request to join a household.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the user requesting to join." },
+        "householdId": { "type": "string", "description": "ID of the household to join." },
+        "householdName": { "type": "string", "description": "Name of the household." },
+        "displayName": { "type": "string", "description": "Display name of the user." },
+        "email": { "type": "string", "format": "email", "description": "Email of the user." },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"], "description": "Status of the request." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "householdId", "displayName", "email", "status", "createdAt"]
     }
   },
   "firestore": {
     "/users/{userId}": { "schema": "UserProfile", "description": "Global user profiles." },
     "/households/{householdId}": { "schema": "Household", "description": "Household groups." },
+    "/joinRequests/{requestId}": { "schema": "JoinRequest", "description": "Global join requests." },
     "/households/{householdId}/accounts/{accountId}": { "schema": "Account", "description": "Accounts within a household." },
     "/households/{householdId}/transactions/{transactionId}": { "schema": "Transaction", "description": "Transactions within a household." },
     "/households/{householdId}/categories/{categoryId}": { "schema": "Category", "description": "Categories within a household." },

@@ -29,6 +29,17 @@ service cloud.firestore {
     //   - members: map (required, userId -> {role, type, salaryVisible, displayName, email})
     //   - createdAt: timestamp (required)
     //
+    // Collection: joinRequests
+    // Document ID: {requestId}
+    // Fields:
+    //   - userId: string (required)
+    //   - householdId: string (required)
+    //   - householdName: string (required)
+    //   - displayName: string (required)
+    //   - email: string (required)
+    //   - status: string (required, enum: ['pending', 'approved', 'rejected', 'cancelled'])
+    //   - createdAt: timestamp (required)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -52,7 +63,8 @@ service cloud.firestore {
 
     function isMemberOfHousehold(householdId) {
       return isAuthenticated() && 
-             (request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members.keys());
+             (exists(/databases/$(database)/documents/households/$(householdId)) &&
+              request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members.keys());
     }
 
     function hasRequiredFields(fields) {
@@ -103,11 +115,22 @@ service cloud.firestore {
              data.joinCode is string && data.joinCode.size() >= 3 && data.joinCode.size() <= 10;
     }
 
+    function isValidJoinRequest(data) {
+      return hasRequiredFields(['userId', 'householdId', 'householdName', 'displayName', 'email', 'status', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.householdId is string &&
+             data.householdName is string &&
+             data.displayName is string &&
+             isValidEmail(data.email) &&
+             data.status == 'pending' &&
+             isRecent('createdAt');
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
 
-    // User Profiles - Strictly Owner Only for PII protection
+    // User Profiles
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
@@ -120,7 +143,6 @@ service cloud.firestore {
 
     // Households
     match /households/{householdId} {
-      // Allow read for all authenticated users to enable joinCode search and joining
       allow read: if isAuthenticated();
       
       allow create: if isAuthenticated() && isValidHousehold(request.resource.data) && 
@@ -128,18 +150,7 @@ service cloud.firestore {
                       isRecent('createdAt');
       
       allow update: if isAuthenticated() && 
-                      (
-                        // Existing members can update
-                        (request.auth.uid in resource.data.members.keys()) ||
-                        // New members can join if they know the joinCode and only add themselves
-                        (
-                          request.resource.data.joinCode == resource.data.joinCode &&
-                          request.resource.data.members.keys().hasAll(resource.data.members.keys()) &&
-                          request.resource.data.members.size() == resource.data.members.size() + 1 &&
-                          request.resource.data.members[request.auth.uid] != null &&
-                          isValidMember(request.resource.data.members[request.auth.uid])
-                        )
-                      ) && 
+                      (request.auth.uid in resource.data.members.keys()) && 
                       isValidHousehold(request.resource.data) &&
                       request.resource.data.ownerId == resource.data.ownerId &&
                       request.resource.data.createdAt == resource.data.createdAt;
@@ -147,11 +158,6 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
 
       // Subcollections
-      match /{allSubcollections=**} {
-        allow read, write: if isMemberOfHousehold(householdId);
-      }
-      
-      // Specific validation for subcollections
       match /accounts/{accountId} {
         function isValidAccount(data) {
           return hasRequiredFields(['name', 'ownerId', 'type', 'branch', 'balance', 'currency', 'createdAt']) &&
@@ -166,6 +172,7 @@ service cloud.firestore {
                  (!('minimumPayment' in data) || data.minimumPayment is number);
         }
 
+        allow read: if isMemberOfHousehold(householdId);
         allow create: if isMemberOfHousehold(householdId) && isValidAccount(request.resource.data) && isRecent('createdAt');
         allow update: if isMemberOfHousehold(householdId) && isValidAccount(request.resource.data) && 
                         request.resource.data.createdAt == resource.data.createdAt;
@@ -173,15 +180,38 @@ service cloud.firestore {
       }
 
       match /transactions/{transactionId} {
+        allow read: if isMemberOfHousehold(householdId);
         allow create, update: if isMemberOfHousehold(householdId) && 
                                 hasRequiredFields(['description', 'amount', 'currency', 'date', 'debitAccountId', 'creditAccountId', 'categoryId', 'userId', 'createdAt', 'updatedAt']) &&
                                 validString('description', 1, 200);
+        allow delete: if isMemberOfHousehold(householdId);
       }
+
+      match /{allSubcollections=**} {
+        allow read, write: if isMemberOfHousehold(householdId);
+      }
+    }
+
+    // Join Requests
+    match /joinRequests/{requestId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isMemberOfHousehold(resource.data.householdId));
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidJoinRequest(request.resource.data);
+      allow update: if isAuthenticated() && 
+                      (
+                        // Member of household can approve/reject
+                        (isMemberOfHousehold(resource.data.householdId) && (request.resource.data.status in ['approved', 'rejected'])) ||
+                        // User can cancel
+                        (resource.data.userId == request.auth.uid && request.resource.data.status == 'cancelled')
+                      ) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.householdId == resource.data.householdId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin();
     }
 
     // Collection Group Rules for Shared Budgets
     match /{path=**}/sharedBudgets/{budgetId} {
-      // Allow read if member of household OR if participant OR querying by joinCode
       allow read: if isAuthenticated() && 
                     (isMemberOfHousehold(path.split('/')[1]) || 
                      resource.data.joinCode == request.query.filters.joinCode ||

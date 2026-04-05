@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { db, auth, googleProvider, onAuthStateChanged, signInWithPopup, signOut, browserPopupRedirectResolver, doc, getDoc, setDoc, collection, getDocs } from '../lib/firebase';
+import { db, auth, googleProvider, onAuthStateChanged, signInWithPopup, signOut, browserPopupRedirectResolver, doc, getDoc, setDoc, collection, getDocs, onSnapshot } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/error-handler';
 import { User } from 'firebase/auth';
 import { localDB } from '../db';
@@ -67,23 +67,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (u) {
-        // Sync profile from Firestore to LocalDB on auth change
-        try {
-          const userDoc = await getDoc(doc(db, 'users', u.uid));
-          if (userDoc.exists()) {
-            const userData = { ...userDoc.data(), id: userDoc.id } as UserProfile;
-            await localDB.users.put(userData);
-            
-            if (userData.activeHouseholdId) {
-              const householdDoc = await getDoc(doc(db, 'households', userData.activeHouseholdId));
-              if (householdDoc.exists()) {
-                await localDB.households.put({ ...householdDoc.data(), id: householdDoc.id } as Household);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Sync error:', err);
-        }
         setFirebaseUser(u);
         setLocalUser(null);
       } else {
@@ -93,6 +76,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Real-time profile sync
+  useEffect(() => {
+    if (!firebaseUser) return;
+    
+    const unsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snap) => {
+      if (snap.exists()) {
+        const userData = { ...snap.data(), id: snap.id } as UserProfile;
+        await localDB.users.put(userData);
+        
+        if (userData.activeHouseholdId) {
+          try {
+            const householdDoc = await getDoc(doc(db, 'households', userData.activeHouseholdId));
+            if (householdDoc.exists()) {
+              await localDB.households.put({ ...householdDoc.data(), id: householdDoc.id } as Household);
+            }
+          } catch (err) {
+            console.error('Household sync error:', err);
+          }
+        }
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [firebaseUser?.uid]);
 
   // Check for existing local session on mount
   useEffect(() => {

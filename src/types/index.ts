@@ -219,3 +219,12 @@ export interface Category {
   isSystem?: boolean;
   createdAt: Date;
 }
+
+export interface JoinRequest {
+  id: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  createdAt: Date;
+}

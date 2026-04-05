@@ -82,7 +82,9 @@ import {
   query, 
   where, 
   getDocs, 
-  orderBy 
+  orderBy,
+  limit,
+  addDoc
 } from './lib/firebase';
 
 import { handleFirestoreError, OperationType } from './lib/error-handler';
@@ -2080,9 +2082,32 @@ const JoinOrCreateHousehold = () => {
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<any>(null);
 
   // Auto-check for existing households on mount
   useEffect(() => {
+    const checkPendingRequest = async () => {
+      if (!user || !auth.currentUser) return;
+      try {
+        const q = query(
+          collection(db, 'joinRequests'),
+          where('userId', '==', user.uid),
+          where('status', '==', 'pending'),
+          limit(1)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setPendingRequest({ ...snap.docs[0].data(), id: snap.docs[0].id });
+        } else {
+          setPendingRequest(null);
+        }
+      } catch (err) {
+        console.error('Check pending request error:', err);
+      }
+    };
+    checkPendingRequest();
+
     const checkExisting = async () => {
       if (!user || !auth.currentUser) return; // Skip for local users
       setLoading(true);
@@ -2167,62 +2192,40 @@ const JoinOrCreateHousehold = () => {
         return;
       }
 
-      // Add user to household members
-      const memberData = {
-        role: 'member',
-        type: 'other',
-        salaryVisible: true,
-        displayName: user.displayName || 'Kullanıcı',
-        email: user.email || ''
-      };
-
-      // Only try Firestore if we have a real Firebase user
-      if (auth.currentUser) {
-        try {
-          await updateDoc(doc(db, 'households', householdId), {
-            [`members.${user.uid}`]: memberData
-          });
-        } catch (err: any) {
-          console.error('Household update error:', err);
-          if (err.code === 'permission-denied') {
-            handleFirestoreError(err, OperationType.UPDATE, `households/${householdId}`);
-            setError('Hane güncellenemedi. Lütfen hane sahibi ile iletişime geçin.');
-          } else {
-            throw err;
-          }
-          return;
-        }
-
-        // Update user profile in Firestore
-        try {
-          // Use setDoc with merge: true to be more resilient
-          await setDoc(doc(db, 'users', user.uid), {
-            activeHouseholdId: householdId
-          }, { merge: true });
-        } catch (err: any) {
-          console.error('User profile update error:', err);
-          if (err.code === 'permission-denied') {
-            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
-            setError('Profil güncellenemedi. Lütfen tekrar deneyin.');
-          } else {
-            throw err;
-          }
-          return;
-        }
-
-        // SYNC FROM FIRESTORE TO LOCALDB
-        try {
-          const updatedHouseholdDoc = await getDoc(doc(db, 'households', householdId));
-          if (updatedHouseholdDoc.exists()) {
-            await localDB.households.put({ ...updatedHouseholdDoc.data(), id: householdId } as Household);
-          }
-        } catch (err: any) {
-          console.error('Firestore sync error:', err);
-        }
+      // Check for existing pending request
+      const reqQ = query(
+        collection(db, 'joinRequests'),
+        where('userId', '==', user.uid),
+        where('householdId', '==', householdId),
+        where('status', '==', 'pending')
+      );
+      const reqSnap = await getDocs(reqQ);
+      if (!reqSnap.empty) {
+        setError('Zaten bu hane için bekleyen bir katılım isteğiniz var.');
+        return;
       }
 
-      // ALWAYS SYNC TO LOCALDB
-      await localDB.users.update(user.uid, { activeHouseholdId: householdId });
+      // Create join request
+      const newRequest = {
+        userId: user.uid,
+        householdId: householdId,
+        householdName: householdData.name,
+        displayName: user.displayName || 'Kullanıcı',
+        email: user.email || '',
+        status: 'pending',
+        createdAt: new Date()
+      };
+
+      try {
+        const docRef = await addDoc(collection(db, 'joinRequests'), newRequest);
+        setPendingRequest({ ...newRequest, id: docRef.id });
+        setSuccess('Katılım isteği gönderildi. Hane sahibinin onayı bekleniyor.');
+      } catch (err: any) {
+        if (err.code === 'permission-denied') {
+          handleFirestoreError(err, OperationType.CREATE, 'joinRequests');
+        }
+        throw err;
+      }
 
     } catch (err: any) {
       console.error('Join error:', err);
@@ -2312,27 +2315,53 @@ const JoinOrCreateHousehold = () => {
         <h2 className="text-2xl font-bold text-white text-center mb-2">Hane Seçimi</h2>
         <p className="text-zinc-300 text-center mb-8 text-sm">Finansal verilerinizi yönetmek için bir haneye katılın veya yeni bir hane oluşturun.</p>
 
-        <form onSubmit={handleJoin} className="space-y-4 mb-8">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Katılım Kodu</label>
-            <input 
-              type="text"
-              required
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              placeholder="Örn: AB12CD"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 text-center text-xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white placeholder:text-zinc-600"
-            />
+        {pendingRequest ? (
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 text-center mb-8">
+            <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="w-6 h-6 text-emerald-500" />
+            </div>
+            <h3 className="text-white font-bold mb-2">İstek Beklemede</h3>
+            {success && <p className="text-emerald-500 text-xs mb-4">{success}</p>}
+            <p className="text-zinc-400 text-sm mb-4">
+              <span className="text-emerald-500 font-bold">{pendingRequest.householdName}</span> hanesine katılma isteğiniz gönderildi. Hane sahibinin onayı bekleniyor.
+            </p>
+            <button 
+              onClick={async () => {
+                try {
+                  await updateDoc(doc(db, 'joinRequests', pendingRequest.id), { status: 'cancelled' });
+                  setPendingRequest(null);
+                } catch (err) {
+                  console.error('Cancel request error:', err);
+                }
+              }}
+              className="text-rose-500 text-xs font-bold hover:underline"
+            >
+              İsteği İptal Et
+            </button>
           </div>
-          {error && <p className="text-rose-500 text-xs text-center">{error}</p>}
-          <button 
-            type="submit"
-            disabled={loading}
-            className="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-          >
-            {loading ? 'Katılınıyor...' : 'Haneye Katıl'}
-          </button>
-        </form>
+        ) : (
+          <form onSubmit={handleJoin} className="space-y-4 mb-8">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Katılım Kodu</label>
+              <input 
+                type="text"
+                required
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="Örn: AB12CD"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 text-center text-xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white placeholder:text-zinc-600"
+              />
+            </div>
+            {error && <p className="text-rose-500 text-xs text-center">{error}</p>}
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+            >
+              {loading ? 'İstek Gönderiliyor...' : 'Haneye Katılma İsteği Gönder'}
+            </button>
+          </form>
+        )}
 
         <div className="relative mb-8">
           <div className="absolute inset-0 flex items-center">

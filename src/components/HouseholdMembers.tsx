@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Users, Plus, Trash2, Shield, User as UserIcon, Baby, MoreVertical, Mail, Check, X, ArrowRightLeft, Heart } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, Plus, Trash2, Shield, User as UserIcon, Baby, MoreVertical, Mail, Check, X, ArrowRightLeft, Heart, UserCheck, UserX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { localDB } from '../db';
-import { Household } from '../types';
+import { Household, JoinRequest } from '../types';
 import { ConfirmModal } from './ConfirmModal';
+import { db, doc, updateDoc, collection, query, where, onSnapshot, setDoc } from '../lib/firebase';
 
 interface HouseholdMembersProps {
   household: Household;
@@ -24,6 +25,10 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
 
   const [copySuccess, setCopySuccess] = useState(false);
   const [refreshingCode, setRefreshingCode] = useState(false);
+  
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<JoinRequest | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     id: string;
     type: 'member' | 'refresh_code';
@@ -32,6 +37,23 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
   } | null>(null);
 
   const isOwner = household.ownerId === currentUserId;
+
+  useEffect(() => {
+    if (!isOwner) return;
+    
+    const q = query(
+      collection(db, 'joinRequests'),
+      where('householdId', '==', household.id),
+      where('status', '==', 'pending')
+    );
+    
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const requests = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as JoinRequest));
+      setJoinRequests(requests);
+    });
+    
+    return () => unsubscribe();
+  }, [household.id, isOwner]);
 
   const handleCopyCode = () => {
     if (household.joinCode) {
@@ -49,7 +71,6 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       
       // Update Firestore
-      const { db, doc, updateDoc } = await import('../lib/firebase');
       await updateDoc(doc(db, 'households', household.id), { joinCode: newCode });
       
       // Update LocalDB
@@ -58,6 +79,72 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       console.error('Error refreshing join code:', error);
     } finally {
       setRefreshingCode(false);
+    }
+  };
+
+  const handleApproveRequest = async (requestId: string, virtualMemberId?: string) => {
+    if (!isOwner || loading) return;
+    setLoading(true);
+    try {
+      const request = joinRequests.find(r => r.id === requestId);
+      if (!request) return;
+
+      const updatedMembers = { ...household.members };
+      const memberData = {
+        role: 'member' as const,
+        type: 'adult' as const,
+        salaryVisible: true,
+        displayName: request.displayName,
+        email: request.email
+      };
+
+      if (virtualMemberId && updatedMembers[virtualMemberId]) {
+        // Match with virtual member
+        const virtual = updatedMembers[virtualMemberId];
+        updatedMembers[request.userId] = {
+          ...memberData,
+          type: virtual.type,
+          salaryVisible: virtual.salaryVisible
+        };
+        delete updatedMembers[virtualMemberId];
+      } else {
+        // Add as new member
+        updatedMembers[request.userId] = memberData;
+      }
+
+      // Update Household
+      await updateDoc(doc(db, 'households', household.id), { members: updatedMembers });
+      
+      // Update Join Request
+      await updateDoc(doc(db, 'joinRequests', requestId), { status: 'approved' });
+      
+      // Update User Profile
+      await setDoc(doc(db, 'users', request.userId), { activeHouseholdId: household.id }, { merge: true });
+
+      // Sync local
+      await localDB.households.update(household.id, { members: updatedMembers });
+
+      if (showNotification) showNotification('İstek onaylandı.', 'success');
+      setIsApproveModalOpen(false);
+      setSelectedRequest(null);
+    } catch (error) {
+      console.error('Approve error:', error);
+      if (showNotification) showNotification('Onaylama sırasında hata oluştu.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    if (!isOwner || loading) return;
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'joinRequests', requestId), { status: 'rejected' });
+      if (showNotification) showNotification('İstek reddedildi.', 'info');
+    } catch (error) {
+      console.error('Reject error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -251,6 +338,44 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
         </div>
       )}
 
+      {isOwner && joinRequests.length > 0 && (
+        <div className="space-y-4">
+          <h4 className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-emerald-500" />
+            Bekleyen Katılım İstekleri
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {joinRequests.map(request => (
+              <div key={request.id} className="bg-emerald-500/5 border border-emerald-500/10 p-5 rounded-3xl flex items-center justify-between">
+                <div>
+                  <h5 className="font-bold text-foreground">{request.displayName}</h5>
+                  <p className="text-xs text-muted-foreground">{request.email}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleRejectRequest(request.id)}
+                    className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
+                    title="Reddet"
+                  >
+                    <UserX className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedRequest(request);
+                      setIsApproveModalOpen(true);
+                    }}
+                    className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-colors"
+                    title="Onayla"
+                  >
+                    <UserCheck className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Object.entries(household.members).map(([id, member]) => (
           <div key={id} className="bg-card border border-border p-5 rounded-3xl flex items-center justify-between group hover:shadow-md transition-all">
@@ -324,6 +449,84 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
           </div>
         ))}
       </div>
+
+      <AnimatePresence>
+        {isApproveModalOpen && selectedRequest && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border border-border w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-foreground">İsteği Onayla</h3>
+                <button onClick={() => setIsApproveModalOpen(false)} className="p-2 hover:bg-muted rounded-xl transition-colors">
+                  <X className="w-5 h-5 text-muted-foreground" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-sm text-foreground">
+                  <span className="font-bold">{selectedRequest.displayName}</span> kullanıcısını haneye eklemek üzeresiniz. 
+                  Bu kullanıcıyı mevcut bir taslak birey ile eşleştirmek ister misiniz?
+                </p>
+                
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Eşleştirilecek Taslak Birey (Opsiyonel)</label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    <button
+                      onClick={() => setSelectedVirtualMemberId(null)}
+                      className={`flex items-center gap-3 p-4 rounded-2xl border transition-all w-full ${
+                        selectedVirtualMemberId === null 
+                          ? 'bg-primary/10 border-primary text-foreground' 
+                          : 'bg-background border-border text-muted-foreground hover:border-muted-foreground'
+                      }`}
+                    >
+                      <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center">
+                        <Plus className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold">Yeni Birey Olarak Ekle</p>
+                        <p className="text-xs opacity-60">Eşleştirme yapmadan yeni bir üye oluşturur.</p>
+                      </div>
+                    </button>
+
+                    {Object.entries(household.members)
+                      .filter(([mid]) => mid.startsWith('virtual-'))
+                      .map(([mid, m]) => (
+                        <button
+                          key={mid}
+                          onClick={() => setSelectedVirtualMemberId(mid)}
+                          className={`flex items-center gap-3 p-4 rounded-2xl border transition-all w-full ${
+                            selectedVirtualMemberId === mid 
+                              ? 'bg-primary/10 border-primary text-foreground' 
+                              : 'bg-background border-border text-muted-foreground hover:border-muted-foreground'
+                          }`}
+                        >
+                          <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center">
+                            <UserIcon className="w-4 h-4" />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-bold">{m.displayName}</p>
+                            <p className="text-xs opacity-60">Taslak Birey</p>
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleApproveRequest(selectedRequest.id, selectedVirtualMemberId || undefined)}
+                  disabled={loading}
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 mt-4"
+                >
+                  {loading ? 'Onaylanıyor...' : 'Onayla ve Ekle'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isMergeModalOpen && (

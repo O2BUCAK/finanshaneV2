@@ -23,7 +23,8 @@ import {
   collectionGroup,
   Timestamp,
   arrayUnion,
-  addDoc
+  addDoc,
+  onSnapshot
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -51,6 +52,7 @@ export {
   Timestamp,
   arrayUnion,
   addDoc,
+  onSnapshot,
   signInWithPopup,
   signOut,
   onAuthStateChanged,
