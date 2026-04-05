@@ -43,7 +43,8 @@ import {
   Shield,
   Sun,
   Moon,
-  Clock
+  Clock,
+  Save
 } from 'lucide-react';
 import { localDB } from './db';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -2645,6 +2646,47 @@ const Dashboard = () => {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
+  const [householdName, setHouseholdName] = useState(household?.name || '');
+  const [householdCurrency, setHouseholdCurrency] = useState(household?.currency || 'TRY');
+  const [isUpdatingHousehold, setIsUpdatingHousehold] = useState(false);
+
+  useEffect(() => {
+    if (household) {
+      setHouseholdName(household.name);
+      setHouseholdCurrency(household.currency);
+    }
+  }, [household?.id]); // Only reset when household ID changes
+
+  const handleUpdateHousehold = async () => {
+    if (!household || !user || household.ownerId !== user.uid) return;
+    if (!householdName.trim()) {
+      showNotification('Hane adı boş olamaz.', 'error');
+      return;
+    }
+
+    setIsUpdatingHousehold(true);
+    try {
+      const updates = {
+        name: householdName,
+        currency: householdCurrency
+      };
+
+      // Update Firestore
+      await updateDoc(doc(db, 'households', household.id), updates);
+      
+      // Update LocalDB
+      await localDB.households.update(household.id, updates);
+
+      showNotification('Hane ayarları güncellendi.', 'success');
+      await logSecurityAction('update_household', `Hane ayarları güncellendi: ${householdName}`);
+    } catch (error) {
+      console.error('Error updating household:', error);
+      showNotification('Hane ayarları güncellenirken bir hata oluştu.', 'error');
+    } finally {
+      setIsUpdatingHousehold(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'settings') {
       localDB.auditLogs.orderBy('timestamp').reverse().limit(50).toArray().then(setAuditLogs);
@@ -3357,25 +3399,68 @@ const Dashboard = () => {
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl">
-                <h3 className="text-xl font-bold mb-6">Hane Ayarları</h3>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold">Hane Ayarları</h3>
+                  {household && user && household.ownerId === user.uid && (
+                    <button
+                      onClick={handleUpdateHousehold}
+                      disabled={isUpdatingHousehold || (householdName === household.name && householdCurrency === household.currency)}
+                      className="px-6 py-2 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isUpdatingHousehold ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Save className="w-4 h-4" />
+                      )}
+                      Kaydet
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-4 mb-8">
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-zinc-300 uppercase tracking-wider">Hane Adı</label>
                     <input 
                       type="text" 
-                      defaultValue={household?.name || ''} 
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      value={householdName}
+                      onChange={(e) => setHouseholdName(e.target.value)}
+                      disabled={household?.ownerId !== user?.uid}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50"
                     />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-zinc-300 uppercase tracking-wider">Para Birimi</label>
-                    <select className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none">
-                      <option value="TRY">Türk Lirası (₺)</option>
-                      <option value="USD">Amerikan Loları ($)</option>
-                      <option value="EUR">Euro (€)</option>
-                    </select>
+                    <div className="relative">
+                      <select 
+                        value={householdCurrency}
+                        onChange={(e) => setHouseholdCurrency(e.target.value)}
+                        disabled={household?.ownerId !== user?.uid}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none disabled:opacity-50"
+                      >
+                        <option value="TRY">Türk Lirası (₺)</option>
+                        <option value="USD">Amerikan Doları ($)</option>
+                        <option value="EUR">Euro (€)</option>
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                    </div>
                   </div>
                 </div>
+
+                {household && user && household.ownerId === user.uid && (
+                  <div className="flex justify-end mb-8">
+                    <button
+                      onClick={handleUpdateHousehold}
+                      disabled={isUpdatingHousehold || (householdName === household.name && householdCurrency === household.currency)}
+                      className="px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full md:w-auto justify-center shadow-lg shadow-emerald-500/20"
+                    >
+                      {isUpdatingHousehold ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Save className="w-4 h-4" />
+                      )}
+                      Hane Ayarlarını Kaydet
+                    </button>
+                  </div>
+                )}
 
                 {household && user && (
                   <HouseholdMembers 
