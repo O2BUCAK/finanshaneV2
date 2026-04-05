@@ -118,9 +118,6 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       // Update Join Request
       await updateDoc(doc(db, 'joinRequests', requestId), { status: 'approved' });
       
-      // Update User Profile
-      await setDoc(doc(db, 'users', request.userId), { activeHouseholdId: household.id }, { merge: true });
-
       // Sync local
       await localDB.households.update(household.id, { members: updatedMembers });
 

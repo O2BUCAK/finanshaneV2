@@ -84,7 +84,8 @@ import {
   getDocs, 
   orderBy,
   limit,
-  addDoc
+  addDoc,
+  onSnapshot
 } from './lib/firebase';
 
 import { handleFirestoreError, OperationType } from './lib/error-handler';
@@ -2087,27 +2088,39 @@ const JoinOrCreateHousehold = () => {
 
   // Auto-check for existing households on mount
   useEffect(() => {
-    const checkPendingRequest = async () => {
-      if (!user || !auth.currentUser) return;
-      try {
-        const q = query(
-          collection(db, 'joinRequests'),
-          where('userId', '==', user.uid),
-          where('status', '==', 'pending'),
-          limit(1)
-        );
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          setPendingRequest({ ...snap.docs[0].data(), id: snap.docs[0].id });
-        } else {
-          setPendingRequest(null);
-        }
-      } catch (err) {
-        console.error('Check pending request error:', err);
-      }
-    };
-    checkPendingRequest();
+    if (!user || !auth.currentUser) return;
 
+    const q = query(
+      collection(db, 'joinRequests'),
+      where('userId', '==', user.uid),
+      where('status', 'in', ['pending', 'approved']),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+
+    const unsubscribe = onSnapshot(q, async (snap) => {
+      if (!snap.empty) {
+        const req = { ...snap.docs[0].data(), id: snap.docs[0].id } as any;
+        setPendingRequest(req);
+
+        if (req.status === 'approved') {
+          // If approved, update our own profile
+          try {
+            await setDoc(doc(db, 'users', user.uid), { activeHouseholdId: req.householdId }, { merge: true });
+            // The useAuth hook will handle the rest via its profile listener
+          } catch (err) {
+            console.error('Error updating profile after approval:', err);
+          }
+        }
+      } else {
+        setPendingRequest(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  useEffect(() => {
     const checkExisting = async () => {
       if (!user || !auth.currentUser) return; // Skip for local users
       setLoading(true);
