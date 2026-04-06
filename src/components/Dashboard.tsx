@@ -283,7 +283,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </h2>
               <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black mb-1 ${netWorthChange >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-destructive/10 text-destructive'}`}>
                 {netWorthChange >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                {Math.abs(netWorthChange).toFixed(1)}%
+                {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Math.abs(netWorthChange))}%
               </div>
             </div>
             <div className="mt-6 pt-6 border-t border-border/50 relative z-10 flex flex-wrap gap-6">
@@ -356,7 +356,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Limit Doluluk</p>
                 <div className="flex items-end gap-2">
                   <p className="text-2xl font-black text-foreground tracking-tighter">
-                    {totalCreditLimit > 0 ? ((totalCreditCardDebt / totalCreditLimit) * 100).toFixed(1) : 0}%
+                    {totalCreditLimit > 0 ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format((totalCreditCardDebt / totalCreditLimit) * 100) : 0}%
                   </p>
                   <div className="flex-1 h-2 bg-secondary rounded-full mb-1.5 overflow-hidden border border-border/50">
                     <div 

@@ -65,22 +65,27 @@ export const useExchangeRates = (isPrivacyMode: boolean = false) => {
     const effectivePrivacy = overridePrivacy !== undefined ? overridePrivacy : isPrivacyMode;
     if (effectivePrivacy) return '••••••';
 
-    const formattedOriginal = new Intl.NumberFormat('tr-TR', { 
-      style: 'currency', 
-      currency: currency,
+    const formatter = new Intl.NumberFormat('tr-TR', { 
+      minimumFractionDigits: 2,
       maximumFractionDigits: amount < 1 && amount !== 0 ? 8 : 2
-    }).format(amount);
+    });
+
+    const formattedValue = formatter.format(amount);
+    const symbol = currency === 'TRY' ? '₺' : (currency === 'USD' ? '$' : (currency === 'EUR' ? '€' : currency));
+    
+    // Add a space between symbol and value for better readability
+    const formattedOriginal = `${symbol} ${formattedValue}`;
 
     if (currency === 'TRY' || !rates) {
       return formattedOriginal;
     }
 
     const tryEquivalent = convertToTRY(amount, currency);
-    const formattedTRY = new Intl.NumberFormat('tr-TR', { 
-      style: 'currency', 
-      currency: 'TRY',
+    const tryFormatter = new Intl.NumberFormat('tr-TR', { 
+      minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(tryEquivalent);
+    });
+    const formattedTRY = `₺ ${tryFormatter.format(tryEquivalent)}`;
 
     return `${formattedOriginal} (~${formattedTRY})`;
   };

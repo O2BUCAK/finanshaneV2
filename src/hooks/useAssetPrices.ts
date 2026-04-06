@@ -23,36 +23,102 @@ export const useAssetPrices = (symbols: { symbol: string; type: 'stock' | 'crypt
           if (type === 'crypto') {
             try {
               const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}USDT`);
-              const data = await res.json();
-              if (data.lastPrice) {
-                newPrices[symbol] = {
-                  symbol,
-                  price: parseFloat(data.lastPrice),
-                  currency: 'USD',
-                  changePercent: parseFloat(data.priceChangePercent)
-                };
+              if (res.ok) {
+                const data = await res.json();
+                if (data.lastPrice) {
+                  newPrices[symbol] = {
+                    symbol,
+                    price: parseFloat(data.lastPrice),
+                    currency: 'USD',
+                    changePercent: parseFloat(data.priceChangePercent)
+                  };
+                }
+              } else if (symbol === 'EXEN') {
+                const bitexenRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://www.bitexen.com/api/v1/ticker/EXEN/')}`);
+                const bitexenData = await bitexenRes.json();
+                const parsed = JSON.parse(bitexenData.contents);
+                if (parsed.status === 'success' && parsed.data?.ticker) {
+                  const ticker = parsed.data.ticker;
+                  newPrices[symbol] = {
+                    symbol,
+                    price: parseFloat(ticker.last_price),
+                    currency: 'TRY',
+                    changePercent: parseFloat(ticker.change_24h)
+                  };
+                }
               }
             } catch (e) {
-              console.error(`Error fetching crypto ${symbol}:`, e);
+              console.warn(`Could not fetch price for crypto ${symbol}`);
             }
           } else if (type === 'stock') {
             try {
-              const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.IS`)}`);
-              const data = await res.json();
-              const parsed = JSON.parse(data.contents);
-              const result = parsed.chart.result[0];
-              const meta = result.meta;
-              newPrices[symbol] = {
-                symbol,
-                price: meta.regularMarketPrice,
-                currency: meta.currency || 'TRY',
-                changePercent: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100
-              };
+              // Try Yahoo Finance via AllOrigins proxy
+              const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.IS`;
+              const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`);
+              
+              if (res.ok) {
+                const data = await res.json();
+                const parsed = JSON.parse(data.contents);
+                if (parsed.chart?.result?.[0]) {
+                  const result = parsed.chart.result[0];
+                  const meta = result.meta;
+                  newPrices[symbol] = {
+                    symbol,
+                    price: meta.regularMarketPrice,
+                    currency: meta.currency || 'TRY',
+                    changePercent: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100
+                  };
+                  continue;
+                }
+              }
+
+              // Fallback proxy: Corsproxy.io
+              const fallbackRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`);
+              if (fallbackRes.ok) {
+                const parsed = await fallbackRes.json();
+                if (parsed.chart?.result?.[0]) {
+                  const result = parsed.chart.result[0];
+                  const meta = result.meta;
+                  newPrices[symbol] = {
+                    symbol,
+                    price: meta.regularMarketPrice,
+                    currency: meta.currency || 'TRY',
+                    changePercent: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100
+                  };
+                }
+              }
             } catch (e) {
-              console.error(`Error fetching stock ${symbol}:`, e);
+              console.warn(`Could not fetch price for stock ${symbol}`);
+            }
+          } else if (type === 'fund') {
+            try {
+              // TEFAS Funds via proxy
+              const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.tefas.gov.tr/FonAnaliz/FonGenelBilgileri?fonKod=${symbol}`)}`);
+              
+              if (res.ok) {
+                const data = await res.json();
+                const html = data.contents;
+                
+                // Extract price and change from TEFAS page
+                const priceMatch = html.match(/<span>Son Fiyat \(TL\)<\/span>\s*<ul>\s*<li>([^<]+)<\/li>/);
+                const changeMatch = html.match(/<span>Günlük Getiri \(%\)<\/span>\s*<ul>\s*<li[^>]*>([^<]+)<\/li>/);
+                
+                if (priceMatch) {
+                  const price = parseFloat(priceMatch[1].replace('.', '').replace(',', '.'));
+                  const change = changeMatch ? parseFloat(changeMatch[1].replace(',', '.')) : 0;
+                  
+                  newPrices[symbol] = {
+                    symbol,
+                    price,
+                    currency: 'TRY',
+                    changePercent: change
+                  };
+                }
+              }
+            } catch (e) {
+              console.warn(`Could not fetch price for fund ${symbol}`);
             }
           }
-          // Funds (TEFAS) are harder to fetch without a specific API, we might skip or mock for now
         }
         setPrices(prev => ({ ...prev, ...newPrices }));
       } finally {

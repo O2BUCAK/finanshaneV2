@@ -42,7 +42,7 @@ export const MarketDataWidget: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: "Get the current USD/TRY, EUR/TRY exchange rates and Gram Gold (24K) price in TRY from Google Finance. Return ONLY a JSON object with keys 'USD', 'EUR', 'GA' and subkeys 'satis' (price as string) and 'degisim' (percentage change as string). Example: {\"USD\": {\"satis\": \"32.45\", \"degisim\": \"+0.1\"}, ...}",
+        contents: "Get the current USD/TRY, EUR/TRY exchange rates, Gram Gold (24K) price in TRY, BIST 100 Index (XU100), Bitcoin (BTC) price in USD, and Ethereum (ETH) price in USD from Google Finance. Return ONLY a JSON object with keys 'USD', 'EUR', 'GA', 'XU100', 'BTC', 'ETH' and subkeys 'satis' (price as string) and 'degisim' (percentage change as string). Example: {\"USD\": {\"satis\": \"44.59\", \"degisim\": \"+0.1\"}, ...}",
         config: {
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json"
@@ -82,9 +82,12 @@ export const MarketDataWidget: React.FC = () => {
   }
 
   const items = [
-    { label: 'USD/TRY', keys: ['USD', 'USDOLLAR'], icon: <DollarSign className="w-4 h-4" />, color: 'text-blue-500' },
-    { label: 'EUR/TRY', keys: ['EUR', 'EURO'], icon: <Euro className="w-4 h-4" />, color: 'text-emerald-500' },
-    { label: 'Gram Altın', keys: ['GA', 'gram-altin', 'GOLD'], icon: <Coins className="w-4 h-4" />, color: 'text-amber-500' },
+    { label: 'USD/TRY', keys: ['USD', 'USDOLLAR'], icon: <DollarSign className="w-4 h-4" />, color: 'text-blue-500', prefix: '₺' },
+    { label: 'EUR/TRY', keys: ['EUR', 'EURO'], icon: <Euro className="w-4 h-4" />, color: 'text-emerald-500', prefix: '₺' },
+    { label: 'Gram Altın', keys: ['GA', 'gram-altin', 'GOLD'], icon: <Coins className="w-4 h-4" />, color: 'text-amber-500', prefix: '₺' },
+    { label: 'BIST 100', keys: ['XU100', 'BIST100'], icon: <TrendingUp className="w-4 h-4" />, color: 'text-rose-500', prefix: '' },
+    { label: 'Bitcoin', keys: ['BTC', 'BITCOIN'], icon: <TrendingUp className="w-4 h-4" />, color: 'text-orange-500', prefix: '$' },
+    { label: 'Ethereum', keys: ['ETH', 'ETHEREUM'], icon: <TrendingUp className="w-4 h-4" />, color: 'text-indigo-500', prefix: '$' },
   ];
 
   return (
@@ -127,7 +130,7 @@ export const MarketDataWidget: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {items.map((item) => {
           // Try all possible keys for this item
           let marketItem = null;
@@ -141,7 +144,23 @@ export const MarketDataWidget: React.FC = () => {
           if (!marketItem) return null;
 
           // Handle different possible key names from the API
-          const selling = marketItem.Selling || marketItem.Satis || marketItem.satis || (typeof marketItem === 'string' ? marketItem : '0');
+          let selling = marketItem.Selling || marketItem.Satis || marketItem.satis || (typeof marketItem === 'string' ? marketItem : '0');
+          
+          // Clean up formatting if it's a string
+          if (typeof selling === 'string') {
+            selling = selling.replace('₺', '').replace('$', '').trim();
+          }
+
+          const priceValue = parseFloat(String(selling).replace(',', '.'));
+          const formattedValue = isNaN(priceValue) 
+            ? selling 
+            : new Intl.NumberFormat('tr-TR', { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: item.label.includes('Bitcoin') || item.label.includes('Ethereum') ? 2 : 2 
+              }).format(priceValue);
+          
+          const formattedPrice = `${item.prefix} ${formattedValue}`;
+
           const change = marketItem.Change || marketItem.Degisim || marketItem.degisim || '0';
           const isUp = !String(change).startsWith('-');
 
@@ -158,7 +177,7 @@ export const MarketDataWidget: React.FC = () => {
                 </div>
               </div>
               <div className="text-xl font-bold text-foreground tracking-tight">
-                ₺{selling}
+                {formattedPrice}
               </div>
             </div>
           );

@@ -150,6 +150,18 @@ export interface Account {
     interestRate?: number;
     period?: 'daily' | 'monthly' | 'yearly';
     maturityDate?: string;
+    startDate?: string;
+  };
+  loanDetails?: {
+    principal: number;
+    interestRate: number;
+    termMonths: number;
+    startDate: string;
+    monthlyPayment: number;
+    totalPayment: number;
+    totalInterest: number;
+    remainingPrincipal: number;
+    nextPaymentDate: string;
   };
   apiConfig?: {
     apiKey: string;

@@ -157,13 +157,15 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
 
       // Add as participant if not already there
       if (!budgetData.participants.find(p => p.id === profile.id)) {
+        const role = profile.role || 'adult';
+        const weight = role === 'child' || role === 'elderly' ? 0.5 : 1;
         const newParticipant: SharedBudgetParticipant = {
           id: profile.id,
           name: profile.fullName,
-          weight: 1,
-          adultCount: 1,
-          childCount: 0,
-          elderlyCount: 0
+          weight,
+          adultCount: role === 'adult' ? 1 : 0,
+          childCount: role === 'child' ? 1 : 0,
+          elderlyCount: role === 'elderly' ? 1 : 0
         };
         const householdPath = budgetDoc.ref.parent.parent?.path;
         if (householdPath) {
@@ -222,7 +224,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
     e.preventDefault();
     if (!selectedBudget || !newParticipantName.trim() || !householdId) return;
 
-    const weight = newParticipantAdults + newParticipantChildren + newParticipantElderly;
+    const weight = newParticipantAdults + (newParticipantChildren * 0.5) + (newParticipantElderly * 0.5);
     if (weight <= 0) return;
 
     const newParticipant: SharedBudgetParticipant = { 
@@ -351,12 +353,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
 
       const totalSharingWeight = sharingParticipants.reduce((sum, p) => sum + p.weight, 0);
 
-      if (exp.splitType === 'equal') {
-        const perPerson = exp.amount / sharingParticipants.length;
-        sharingParticipants.forEach(p => {
-          balances[p.id].owed += perPerson;
-        });
-      } else if (exp.splitType === 'by_weight') {
+      if (exp.splitType === 'equal' || exp.splitType === 'by_weight') {
         sharingParticipants.forEach(p => {
           const share = (exp.amount / totalSharingWeight) * p.weight;
           balances[p.id].owed += share;
@@ -550,12 +547,7 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
                 const totalSharingWeight = sharingParticipants.reduce((sum, p) => sum + p.weight, 0);
                 const shares: { name: string; amount: number }[] = [];
 
-                if (exp.splitType === 'equal') {
-                  const perPerson = exp.amount / sharingParticipants.length;
-                  sharingParticipants.forEach(p => {
-                    shares.push({ name: p.name, amount: perPerson });
-                  });
-                } else if (exp.splitType === 'by_weight') {
+                if (exp.splitType === 'equal' || exp.splitType === 'by_weight') {
                   sharingParticipants.forEach(p => {
                     const share = (exp.amount / totalSharingWeight) * p.weight;
                     shares.push({ name: p.name, amount: share });
@@ -729,11 +721,11 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
                 </div>
 
                 <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-center">
-                  <span className="text-xs text-zinc-300 uppercase font-bold">Toplam Kişi Sayısı: </span>
-                  <span className="text-emerald-500 font-bold">{newParticipantAdults + newParticipantChildren + newParticipantElderly}</span>
+                  <span className="text-xs text-zinc-300 uppercase font-bold">Hesaplanan Ağırlık: </span>
+                  <span className="text-emerald-500 font-bold">{newParticipantAdults + (newParticipantChildren * 0.5) + (newParticipantElderly * 0.5)}</span>
                 </div>
 
-                <p className="text-[10px] text-zinc-300 italic">Harcamalar toplam kişi sayısına göre orantılı bölüştürülecektir.</p>
+                <p className="text-[10px] text-zinc-300 italic">Harcamalar kişi sayısına göre bölüştürülürken yetişkinler 1, çocuklar ve yaşlılar 0.5 birim sayılır.</p>
                 
                 <button type="submit" disabled={newParticipantAdults + newParticipantChildren + newParticipantElderly === 0} className="w-full bg-emerald-500 text-white font-bold py-3 rounded-2xl hover:bg-emerald-600 transition-colors mt-4 disabled:opacity-50">
                   Ekle
@@ -997,6 +989,13 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
           )}
         </div>
       )}
+
+      {/* Calculation Note */}
+      <div className="mt-8 p-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl">
+        <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
+          <span className="text-emerald-500 font-bold">NOT:</span> Grup hesaplamalarında adaletli bölüşüm için yetişkinler tam (1.0), çocuklar ve yaşlılar yarım (0.5) kişi olarak sayılır. Bu kural hem "Kişi Sayısına Göre" hem de "Herkese Eşit" bölüşüm seçeneklerinde geçerlidir.
+        </p>
+      </div>
 
       {/* New Budget Modal */}
       {isNewBudgetModalOpen && (

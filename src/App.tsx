@@ -44,7 +44,8 @@ import {
   Sun,
   Moon,
   Clock,
-  Save
+  Save,
+  RefreshCw
 } from 'lucide-react';
 import { localDB } from './db';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -558,9 +559,9 @@ const INSTITUTION_OPTIONS: Record<string, string[]> = {
 };
 
 const ASSET_OPTIONS = {
-  stock: ['THYAO', 'ASELS', 'EREGL', 'GARAN', 'AKBNK', 'YKBNK', 'ISCTR', 'SISE', 'BIMAS', 'TUPRS', 'KCHOL', 'SAHOL', 'SASA', 'HEKTS', 'FROTO', 'TOASO'],
-  crypto: ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK', 'DOGE', 'SHIB'],
-  fund: ['MAC', 'TCD', 'TKF', 'NNF', 'IPB', 'IIH', 'YAS', 'AFT', 'YAY', 'IPJ']
+  stock: ['THYAO', 'ASELS', 'EREGL', 'GARAN', 'AKBNK', 'YKBNK', 'ISCTR', 'SISE', 'BIMAS', 'TUPRS', 'KCHOL', 'SAHOL', 'SASA', 'HEKTS', 'FROTO', 'TOASO', 'ARCLK', 'PETKM', 'PGSUS', 'KOZAL', 'KOZAA', 'EKGYO', 'TCELL', 'TTKOM', 'ENKAI', 'GUBRF', 'ODAS', 'KRDMD', 'ALARK', 'KONTR', 'AGHOL', 'MIATK', 'EUPWR', 'ASTOR', 'SMRTG', 'CWENE'],
+  crypto: ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'AVAX', 'DOT', 'MATIC', 'LINK', 'DOGE', 'SHIB', 'EXEN'],
+  fund: ['MAC', 'TCD', 'TKF', 'NNF', 'IPB', 'IIH', 'YAS', 'AFT', 'YAY', 'IPJ', 'GMR', 'IDH', 'TI3', 'TAU', 'TTE', 'TGE', 'TFT', 'TGR', 'TGT', 'TGV', 'OJD', 'OJT', 'OJV', 'OJZ', 'OKD', 'OKT', 'OKV', 'OKZ']
 };
 
 const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPrivacyMode }: any) => {
@@ -582,6 +583,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   const [isTimeDeposit, setIsTimeDeposit] = useState(false);
   const [interestRate, setInterestRate] = useState('');
   const [depositPeriod, setDepositPeriod] = useState<'daily' | 'monthly' | 'yearly'>('monthly');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [maturityDate, setMaturityDate] = useState('');
 
   // Asset states
@@ -599,6 +601,60 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isEstimatingDate, setIsEstimatingDate] = useState(false);
+
+  // Loan states
+  const [isLoan, setIsLoan] = useState(false);
+  const [loanPrincipal, setLoanPrincipal] = useState('');
+  const [loanInterestRate, setLoanInterestRate] = useState('');
+  const [loanTermMonths, setLoanTermMonths] = useState('12');
+  const [loanStartDate, setLoanStartDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const calculateLoanDetails = () => {
+    const p = parseFloat(loanPrincipal) || 0;
+    const r = (parseFloat(loanInterestRate) || 0) / 100 / 12;
+    const n = parseInt(loanTermMonths) || 1;
+
+    if (p <= 0) return null;
+
+    let monthlyPayment = 0;
+    if (r > 0) {
+      monthlyPayment = (p * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    } else {
+      monthlyPayment = p / n;
+    }
+
+    const totalPayment = monthlyPayment * n;
+    const totalInterest = totalPayment - p;
+
+    // Calculate remaining principal based on current date
+    const start = new Date(loanStartDate);
+    const now = new Date();
+    const monthsPassed = Math.max(0, (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()));
+    
+    let remainingPrincipal = p;
+    for (let i = 0; i < Math.min(monthsPassed, n); i++) {
+      const interestForMonth = remainingPrincipal * r;
+      const principalForMonth = monthlyPayment - interestForMonth;
+      remainingPrincipal -= principalForMonth;
+    }
+
+    // Calculate next payment date
+    const nextPaymentDate = new Date(start);
+    nextPaymentDate.setMonth(start.getMonth() + monthsPassed + 1);
+
+    return {
+      principal: p,
+      interestRate: parseFloat(loanInterestRate) || 0,
+      termMonths: n,
+      startDate: loanStartDate,
+      monthlyPayment,
+      totalPayment,
+      totalInterest,
+      remainingPrincipal: Math.max(0, remainingPrincipal),
+      nextPaymentDate: nextPaymentDate.toISOString().split('T')[0]
+    };
+  };
 
   // Credit Card states
   const [creditLimit, setCreditLimit] = useState('');
@@ -608,8 +664,14 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
     setAssetQuantity(val);
     const q = parseFloat(val);
     const u = parseFloat(assetUnitPrice);
-    if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setAssetTotalCost((q * u).toFixed(8));
+    const t = parseFloat(assetTotalCost);
+    
+    if (!isNaN(q) && q > 0) {
+      if (!isNaN(u) && u > 0) {
+        setAssetTotalCost((q * u).toFixed(8));
+      } else if (!isNaN(t) && t > 0) {
+        setAssetUnitPrice((t / q).toFixed(8));
+      }
     }
   };
 
@@ -617,8 +679,14 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
     setAssetUnitPrice(val);
     const u = parseFloat(val);
     const q = parseFloat(assetQuantity);
-    if (!isNaN(q) && !isNaN(u) && q > 0) {
-      setAssetTotalCost((q * u).toFixed(8));
+    const t = parseFloat(assetTotalCost);
+    
+    if (!isNaN(u) && u > 0) {
+      if (!isNaN(q) && q > 0) {
+        setAssetTotalCost((q * u).toFixed(8));
+      } else if (!isNaN(t) && t > 0) {
+        setAssetQuantity((t / u).toFixed(8));
+      }
     }
   };
 
@@ -628,10 +696,12 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
     const u = parseFloat(assetUnitPrice);
     const q = parseFloat(assetQuantity);
     
-    if (!isNaN(t) && !isNaN(u) && u > 0) {
-      setAssetQuantity((t / u).toFixed(8));
-    } else if (!isNaN(t) && !isNaN(q) && q > 0) {
-      setAssetUnitPrice((t / q).toFixed(8));
+    if (!isNaN(t) && t > 0) {
+      if (!isNaN(q) && q > 0) {
+        setAssetUnitPrice((t / q).toFixed(8));
+      } else if (!isNaN(u) && u > 0) {
+        setAssetQuantity((t / u).toFixed(8));
+      }
     }
   };
 
@@ -664,11 +734,13 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
         setIsTimeDeposit(initialData.depositDetails.isTimeDeposit);
         setInterestRate(initialData.depositDetails.interestRate?.toString() || '');
         setDepositPeriod(initialData.depositDetails.period || 'monthly');
+        setStartDate(initialData.depositDetails.startDate || new Date(initialData.createdAt).toISOString().split('T')[0]);
         setMaturityDate(initialData.depositDetails.maturityDate || '');
       } else {
         setIsTimeDeposit(false);
         setInterestRate('');
         setDepositPeriod('monthly');
+        setStartDate(new Date().toISOString().split('T')[0]);
         setMaturityDate('');
       }
 
@@ -701,6 +773,20 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
         setApiSecret('');
       }
 
+      if (initialData.loanDetails) {
+        setIsLoan(true);
+        setLoanPrincipal(initialData.loanDetails.principal.toString());
+        setLoanInterestRate(initialData.loanDetails.interestRate.toString());
+        setLoanTermMonths(initialData.loanDetails.termMonths.toString());
+        setLoanStartDate(initialData.loanDetails.startDate);
+      } else {
+        setIsLoan(false);
+        setLoanPrincipal('');
+        setLoanInterestRate('');
+        setLoanTermMonths('12');
+        setLoanStartDate(new Date().toISOString().split('T')[0]);
+      }
+
       if (initialData.subType === 'credit_card') {
         setCreditLimit(initialData.creditLimit?.toString() || '');
         setStatementDay(initialData.statementDay?.toString() || '1');
@@ -722,6 +808,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       setIsTimeDeposit(false);
       setInterestRate('');
       setDepositPeriod('monthly');
+      setStartDate(new Date().toISOString().split('T')[0]);
       setMaturityDate('');
       setIsAsset(false);
       setAssetType('stock');
@@ -734,6 +821,11 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       setIsApiConnected(false);
       setApiKey('');
       setApiSecret('');
+      setIsLoan(false);
+      setLoanPrincipal('');
+      setLoanInterestRate('');
+      setLoanTermMonths('12');
+      setLoanStartDate(new Date().toISOString().split('T')[0]);
       setCreditLimit('');
       setStatementDay('1');
     }
@@ -774,6 +866,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
         isTimeDeposit,
         interestRate: isTimeDeposit && interestRate ? parseFloat(interestRate) : null,
         period: isTimeDeposit ? depositPeriod : null,
+        startDate: isTimeDeposit ? startDate : null,
         maturityDate: isTimeDeposit ? maturityDate : null,
       };
     } else {
@@ -790,6 +883,16 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       };
     } else {
       accountData.assetDetails = null;
+    }
+
+    if (isLoan) {
+      accountData.loanDetails = calculateLoanDetails();
+      if (accountData.loanDetails) {
+        accountData.balance = accountData.loanDetails.remainingPrincipal;
+        accountData.type = 'liability';
+      }
+    } else {
+      accountData.loanDetails = null;
     }
 
     accountData.apiConfig = isApiConnected ? {
@@ -997,7 +1100,17 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
                     </div>
                   </div>
-                  <div className="space-y-2 col-span-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Başlangıç Tarihi</label>
+                    <input
+                      type="date"
+                      required={isTimeDeposit}
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Vade Sonu Tarihi</label>
                     <input
                       type="date"
@@ -1103,7 +1216,6 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
                   <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Alım Tarihi</label>
                   <input
                     type="date"
-                    required={isAsset}
                     value={assetPurchaseDate}
                     onChange={(e) => setAssetPurchaseDate(e.target.value)}
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
@@ -1196,49 +1308,124 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
 
           {subType === 'credit_debt' && (
             <div className="space-y-4 pt-4 border-t border-zinc-800">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Kart Puanları</label>
-                <button 
-                  type="button"
-                  onClick={() => setPoints([...points, { name: '', amount: 0 }])}
-                  className="text-xs text-emerald-500 font-medium hover:underline"
-                >
-                  + Puan Ekle
-                </button>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl cursor-pointer hover:border-emerald-500/50 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={isLoan}
+                    onChange={(e) => setIsLoan(e.target.checked)}
+                    className="w-5 h-5 rounded border-zinc-700 text-emerald-500 focus:ring-emerald-500/20 bg-zinc-900"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-zinc-200">Kredi / Borç Planlaması</span>
+                    <span className="text-xs text-zinc-400">Ödeme planı ve faiz hesaplama için seçin</span>
+                  </div>
+                </label>
               </div>
-              {points.map((p, idx) => (
-                <div key={idx} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={p.name}
-                    onChange={(e) => {
-                      const newPoints = [...points];
-                      newPoints[idx].name = e.target.value;
-                      setPoints(newPoints);
-                    }}
-                    placeholder="Puan Adı (Chip-para vb.)"
-                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                  <input
-                    type="text"
-                    value={formatAmount(p.amount)}
-                    onChange={(e) => {
-                      const newPoints = [...points];
-                      newPoints[idx].amount = parseFloat(parseAmount(cleanAmountInput(e.target.value))) || 0;
-                      setPoints(newPoints);
-                    }}
-                    placeholder="Tutar"
-                    className="w-24 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                  <button 
-                    type="button"
-                    onClick={() => setPoints(points.filter((_, i) => i !== idx))}
-                    className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+
+              {isLoan ? (
+                <div className="space-y-4 p-4 bg-zinc-950/50 border border-zinc-800/50 rounded-2xl">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Anapara</label>
+                      <input
+                        type="text"
+                        value={formatAmount(loanPrincipal)}
+                        onChange={(e) => setLoanPrincipal(parseAmount(cleanAmountInput(e.target.value)))}
+                        placeholder="0,00"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Faiz Oranı (%)</label>
+                      <input
+                        type="text"
+                        value={formatAmount(loanInterestRate)}
+                        onChange={(e) => setLoanInterestRate(parseAmount(cleanAmountInput(e.target.value)))}
+                        placeholder="0,00"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Vade (Ay)</label>
+                      <input
+                        type="number"
+                        value={loanTermMonths}
+                        onChange={(e) => setLoanTermMonths(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Başlangıç</label>
+                      <input
+                        type="date"
+                        value={loanStartDate}
+                        onChange={(e) => setLoanStartDate(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                  </div>
+                  
+                  {calculateLoanDetails() && (
+                    <div className="pt-2 space-y-1 border-t border-zinc-800 mt-2">
+                      <div className="flex justify-between text-[10px] text-zinc-500 uppercase">
+                        <span>Aylık Ödeme</span>
+                        <span className="text-emerald-500 font-bold">{formatAmount(calculateLoanDetails()?.monthlyPayment || 0)} ₺</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] text-zinc-500 uppercase">
+                        <span>Toplam Geri Ödeme</span>
+                        <span>{formatAmount(calculateLoanDetails()?.totalPayment || 0)} ₺</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Kart Puanları</label>
+                    <button 
+                      type="button"
+                      onClick={() => setPoints([...points, { name: '', amount: 0 }])}
+                      className="text-xs text-emerald-500 font-medium hover:underline"
+                    >
+                      + Puan Ekle
+                    </button>
+                  </div>
+                  {points.map((p, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={p.name}
+                        onChange={(e) => {
+                          const newPoints = [...points];
+                          newPoints[idx].name = e.target.value;
+                          setPoints(newPoints);
+                        }}
+                        placeholder="Puan Adı (Chip-para vb.)"
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <input
+                        type="text"
+                        value={formatAmount(p.amount)}
+                        onChange={(e) => {
+                          const newPoints = [...points];
+                          newPoints[idx].amount = parseFloat(parseAmount(cleanAmountInput(e.target.value))) || 0;
+                          setPoints(newPoints);
+                        }}
+                        placeholder="Tutar"
+                        className="w-24 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => setPoints(points.filter((_, i) => i !== idx))}
+                        className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 
@@ -1829,6 +2016,8 @@ const Login = () => {
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user') {
         setError('Giriş penceresi kapatıldı veya önizleme ortamı tarafından engellendi. Lütfen tekrar deneyin veya "Yerel Giriş" seçeneğini kullanın.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Ağ hatası oluştu. Bu durum genellikle tarayıcının önizleme penceresini (iframe) engellemesinden kaynaklanır. Lütfen uygulamayı yeni bir sekmede açarak deneyin veya "Yerel Giriş" seçeneğini kullanın.');
       } else {
         setError(err.message || 'Google ile giriş yapılamadı.');
       }
@@ -1884,6 +2073,14 @@ const Login = () => {
               />
             </svg>
             <span>Google ile Devam Et</span>
+          </button>
+
+          <button
+            onClick={() => window.open(window.location.href, '_blank')}
+            className="w-full flex items-center justify-center gap-2 text-zinc-500 hover:text-zinc-300 text-xs font-medium transition-all"
+          >
+            <ArrowUpRight className="w-3 h-3" />
+            Sorun mu yaşıyorsunuz? Yeni sekmede açın
           </button>
 
           <div className="relative">
@@ -3250,6 +3447,7 @@ const Dashboard = () => {
             <AccountsView 
               householdId={household?.id || ''}
               accounts={accounts}
+              assetPrices={assetPrices}
               onAddAccount={() => {
                 setEditingAccount(null);
                 setIsAccModalOpen(true);

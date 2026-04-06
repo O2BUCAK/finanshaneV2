@@ -2,10 +2,29 @@ import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { localDB } from '../db';
 import { Table } from 'dexie';
+import { db, collection, query, onSnapshot } from '../lib/firebase';
+
+// Helper to convert Firestore timestamps to Dates
+const convertTimestamps = (data: any) => {
+  if (!data) return data;
+  const result = { ...data };
+  for (const key in result) {
+    if (result[key] && typeof result[key].toDate === 'function') {
+      result[key] = result[key].toDate();
+    } else if (Array.isArray(result[key])) {
+      result[key] = result[key].map((item: any) => 
+        (typeof item === 'object' && item !== null) ? convertTimestamps(item) : item
+      );
+    } else if (typeof result[key] === 'object' && result[key] !== null && !(result[key] instanceof Date)) {
+      result[key] = convertTimestamps(result[key]);
+    }
+  }
+  return result;
+};
 
 export function useCollection<T>(
   path: string,
-  _constraints: any[] = []
+  constraints: any[] = []
 ) {
   // Map Firestore paths to Dexie table names
   const getTableName = (p: string): keyof typeof localDB | null => {
@@ -26,6 +45,29 @@ export function useCollection<T>(
   const tableName = getTableName(path);
   const table = tableName ? (localDB[tableName] as Table<any>) : null;
   
+  // Real-time sync from Firestore to Dexie
+  useEffect(() => {
+    if (!path || !table) return;
+
+    const q = query(collection(db, path), ...constraints);
+    const unsubscribe = onSnapshot(q, async (snap) => {
+      for (const change of snap.docChanges()) {
+        const docId = change.doc.id;
+        const docData = { ...convertTimestamps(change.doc.data()), id: docId };
+        
+        if (change.type === 'removed') {
+          await table.delete(docId);
+        } else {
+          await table.put(docData);
+        }
+      }
+    }, (error) => {
+      console.error(`Firestore sync error for ${path}:`, error);
+    });
+
+    return () => unsubscribe();
+  }, [path, table, JSON.stringify(constraints)]);
+
   const data = useLiveQuery(async () => {
     if (!table) return [];
     return await table.toArray();

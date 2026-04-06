@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Wallet, Building2, Bitcoin, Gift, RefreshCw, 
   Plus, Search, ChevronRight, AlertCircle, CheckCircle2,
-  ExternalLink, Settings2, Eye, EyeOff
+  ExternalLink, Settings2, Eye, EyeOff, TrendingUp, TrendingDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Account } from '../types';
@@ -12,6 +12,7 @@ import { syncAccountWithApi } from '../lib/apiIntegrations';
 interface AccountsViewProps {
   householdId: string;
   accounts: Account[];
+  assetPrices: Record<string, { price: number; changePercent: number }>;
   onAddAccount: () => void;
   onEditAccount: (account: Account) => void;
   isPrivacyMode?: boolean;
@@ -20,6 +21,7 @@ interface AccountsViewProps {
 export const AccountsView: React.FC<AccountsViewProps> = ({
   householdId,
   accounts,
+  assetPrices,
   onAddAccount,
   onEditAccount,
   isPrivacyMode = false
@@ -41,6 +43,37 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const isAccountHidden = (accountId: string) => {
     return isPrivacyMode ? !toggledAccounts.has(accountId) : toggledAccounts.has(accountId);
+  };
+
+  const calculateAccruedInterest = (account: Account) => {
+    if (!account.depositDetails?.isTimeDeposit || !account.depositDetails.interestRate) return 0;
+    
+    const startDate = account.depositDetails.startDate ? new Date(account.depositDetails.startDate) : new Date(account.createdAt);
+    const now = new Date();
+    const diffTime = Math.max(0, now.getTime() - startDate.getTime());
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    const rate = account.depositDetails.interestRate / 100;
+    let accrued = 0;
+
+    // Simple interest calculation based on period
+    switch (account.depositDetails.period) {
+      case 'daily':
+        // If it's a daily rate (unlikely but possible)
+        accrued = account.balance * rate * diffDays;
+        break;
+      case 'monthly':
+        // If it's an annual rate but calculated monthly
+        accrued = (account.balance * rate * diffDays) / 365;
+        break;
+      case 'yearly':
+      default:
+        // Standard annual rate calculation
+        accrued = (account.balance * rate * diffDays) / 365;
+        break;
+    }
+    
+    return accrued;
   };
 
   const filteredAccounts = accounts.filter(acc => 
@@ -178,12 +211,28 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 <div className="flex justify-between items-end">
                   <div>
                     <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-2 opacity-60">
-                      {account.subType === 'credit_card' ? 'Güncel Borç' : 'Güncel Bakiye'}
+                      {account.subType === 'credit_card' ? 'Güncel Borç' : account.type === 'asset' && account.assetDetails ? 'Toplam Maliyet' : 'Güncel Bakiye'}
                     </p>
                     <p className={`text-3xl font-black tracking-tighter ${account.subType === 'credit_card' ? 'text-rose-500' : 'text-foreground'}`}>
                       {formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
                     </p>
                   </div>
+                  {account.type === 'asset' && account.assetDetails && assetPrices[account.assetDetails.symbol] && (
+                    <div className="text-right">
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-2 opacity-60">Güncel Değer</p>
+                      <p className="text-xl font-black text-emerald-500 tracking-tighter">
+                        {formatWithEquivalent(account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price, account.currency || 'TRY', isAccountHidden(account.id))}
+                      </p>
+                    </div>
+                  )}
+                  {account.depositDetails?.isTimeDeposit && (
+                    <div className="text-right">
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-2 opacity-60">Tahmini Bakiye</p>
+                      <p className="text-xl font-black text-emerald-500 tracking-tighter">
+                        {formatWithEquivalent(account.balance + calculateAccruedInterest(account), account.currency || 'TRY', isAccountHidden(account.id))}
+                      </p>
+                    </div>
+                  )}
                   {account.apiConfig?.lastSync && (
                     <div className="text-right">
                       <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-2 opacity-60">Son Senk.</p>
@@ -193,6 +242,107 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     </div>
                   )}
                 </div>
+
+                {account.type === 'asset' && account.assetDetails && assetPrices[account.assetDetails.symbol] && (
+                  <div className="mt-6 p-4 bg-zinc-950/30 rounded-2xl border border-border/50">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg ${
+                          (account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) >= account.balance 
+                            ? 'bg-emerald-500/10 text-emerald-500' 
+                            : 'bg-rose-500/10 text-rose-500'
+                        }`}>
+                          {(account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) >= account.balance 
+                            ? <TrendingUp className="w-3 h-3" /> 
+                            : <TrendingDown className="w-3 h-3" />
+                          }
+                        </div>
+                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Kar / Zarar</span>
+                      </div>
+                      <span className={`text-sm font-black ${
+                        (account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) >= account.balance 
+                          ? 'text-emerald-500' 
+                          : 'text-rose-500'
+                      }`}>
+                        {formatWithEquivalent(
+                          (account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) - account.balance,
+                          account.currency || 'TRY',
+                          isAccountHidden(account.id)
+                        )}
+                        <span className="ml-1 text-[10px] opacity-60">
+                          ({(((account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) / (account.balance || 1) - 1) * 100).toFixed(2)}%)
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {account.depositDetails?.isTimeDeposit && (
+                  <div className="mt-6 p-4 bg-zinc-950/30 rounded-2xl border border-border/50">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+                          <TrendingUp className="w-3 h-3" />
+                        </div>
+                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Birikmiş Faiz</span>
+                      </div>
+                      <span className="text-sm font-black text-emerald-500">
+                        {formatWithEquivalent(
+                          calculateAccruedInterest(account),
+                          account.currency || 'TRY',
+                          isAccountHidden(account.id)
+                        )}
+                        <span className="ml-1 text-[10px] opacity-60">
+                          (%{account.depositDetails.interestRate})
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {account.loanDetails && (
+                  <div className="mt-6 space-y-4 p-6 bg-zinc-950/30 rounded-[2rem] border border-border/50 relative overflow-hidden group/loan-info hover:bg-zinc-950/50 transition-all duration-500">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-3xl transition-all duration-700 group-hover/loan-info:bg-emerald-500/10" />
+                    
+                    <div className="flex justify-between items-center relative z-10">
+                      <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kalan Borç</span>
+                      <span className="text-sm font-black text-foreground">{formatWithEquivalent(account.loanDetails.remainingPrincipal, account.currency || 'TRY', isAccountHidden(account.id))}</span>
+                    </div>
+                    
+                    <div className="h-2 w-full bg-secondary/50 rounded-full overflow-hidden relative z-10 p-0.5 border border-border/30">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min((1 - (account.loanDetails.remainingPrincipal / account.loanDetails.principal)) * 100, 100)}%` }}
+                        transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
+                        className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.4)]" 
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-1 relative z-10">
+                      <div>
+                        <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Aylık Taksit</p>
+                        <p className="text-sm font-black text-emerald-500">{formatWithEquivalent(account.loanDetails.monthlyPayment, account.currency || 'TRY', isAccountHidden(account.id))}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Sonraki Ödeme</p>
+                        <p className="text-sm font-black text-foreground">
+                          {new Date(account.loanDetails.nextPaymentDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-border/30 grid grid-cols-2 gap-4 relative z-10">
+                      <div>
+                        <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Toplam Faiz</p>
+                        <p className="text-xs font-black text-rose-500">{formatWithEquivalent(account.loanDetails.totalInterest, account.currency || 'TRY', isAccountHidden(account.id))}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Vade</p>
+                        <p className="text-xs font-black text-foreground">{account.loanDetails.termMonths} Ay</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {account.subType === 'credit_card' && (
                   <div className="mt-6 space-y-4 p-6 bg-zinc-950/30 rounded-[2rem] border border-border/50 relative overflow-hidden group/card-info hover:bg-zinc-950/50 transition-all duration-500">
