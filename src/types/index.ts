@@ -8,6 +8,7 @@ export type AccountSubType =
   | 'transport' | 'food' | 'corporate_gift'; // Social/Gift
 
 export type IncomeFlowType = 'fixed' | 'variable' | 'spot';
+export type IncomeCalculationType = 'fixed' | 'daily_rate';
 export type ExpenseFlowType = 'fixed' | 'variable' | 'subscription';
 
 export interface IncomeSource {
@@ -15,6 +16,9 @@ export interface IncomeSource {
   name: string;
   ownerId: string; // Added to track which family member owns this income
   flowType: IncomeFlowType;
+  calculationType?: IncomeCalculationType; // Added for daily rate vs fixed
+  dailyRate?: number; // Added
+  workDaysPerWeek?: number; // Added
   amount: number;
   currency: string;
   targetAccountId: string;

@@ -46,6 +46,17 @@ export async function updateExpenseSource(householdId: string, sourceId: string,
   try {
     await localDB.expenseSources.update(sourceId, updates);
     await setDoc(doc(db, `households/${householdId}/expenseSources/${sourceId}`), updates, { merge: true });
+
+    // If name is updated, update all related expected expenses
+    if (updates.name) {
+      const relatedExpected = await localDB.expectedExpenses
+        .where('sourceId').equals(sourceId)
+        .toArray();
+      
+      for (const ee of relatedExpected) {
+        await updateExpectedExpense(householdId, ee.id, { sourceName: updates.name });
+      }
+    }
   } catch (error) {
     console.error('Error updating expense source:', error);
     throw error;

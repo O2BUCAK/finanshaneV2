@@ -236,9 +236,16 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                   </button>
                 </div>
                 <h3 className="font-black text-foreground tracking-tight">{source.name}</h3>
-                <p className="text-xl font-black text-foreground mt-1 tracking-tighter">
-                  {formatWithEquivalent(source.amount, source.currency || 'TRY')}
-                </p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <p className="text-xl font-black text-foreground tracking-tighter">
+                    {source.calculationType === 'daily_rate' && source.dailyRate
+                      ? formatWithEquivalent(Number(source.dailyRate), source.currency || 'TRY')
+                      : formatWithEquivalent(source.amount, source.currency || 'TRY')}
+                  </p>
+                  {source.calculationType === 'daily_rate' && (
+                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">/ GÜNLÜK</span>
+                  )}
+                </div>
               </div>
             </div>
           ))}

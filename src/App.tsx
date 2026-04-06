@@ -66,11 +66,11 @@ import { isHoliday } from './utils/holidays';
 import { useCollection } from './hooks/useFirestore';
 import { useExchangeRates } from './hooks/useExchangeRates';
 import { useAssetPrices } from './hooks/useAssetPrices';
-import { createIncomeSource, updateIncomeSource, updateExpectedIncome, createExpectedIncome } from './lib/incomeSources';
+import { createIncomeSource, updateIncomeSource, updateExpectedIncome, createExpectedIncome, calculateMonthlyAmountFromDailyRate } from './lib/incomeSources';
 import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, createInstallmentTransactions } from './lib/ledger';
 import { createExpenseSource, updateExpenseSource, deleteExpenseSource } from './lib/expenseSources';
 import { createPlannedExpense, updatePlannedExpense, deletePlannedExpense } from './lib/plannedExpenses';
-import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, PlannedExpense, Household, UserProfile, ExpenseSource } from './types';
+import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, IncomeCalculationType, PlannedExpense, Household, UserProfile, ExpenseSource } from './types';
 import { 
   db, 
   auth,
@@ -115,53 +115,25 @@ const FLOW_TYPE_OPTIONS = [
 
 // --- Components ---
 
+const CALCULATION_TYPE_OPTIONS = [
+  { id: 'fixed', label: 'Aylık Sabit', description: 'Her ay aynı miktar' },
+  { id: 'daily_rate', label: 'Günlük Bazlı', description: 'Çalışılan gün sayısına göre' },
+];
+
 const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, initialData, isPrivacyMode }: any) => {
   const { user } = useAuth();
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [name, setName] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [flowType, setFlowType] = useState<IncomeFlowType>('fixed');
+  const [calculationType, setCalculationType] = useState<IncomeCalculationType>('fixed');
+  const [dailyRate, setDailyRate] = useState('');
+  const [workDaysPerWeek, setWorkDaysPerWeek] = useState<5 | 6>(5);
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('TRY');
   const [targetAccountId, setTargetAccountId] = useState('');
   const [periodDay, setPeriodDay] = useState('1');
   const [loading, setLoading] = useState(false);
-
-  // Meal Allowance Calculator States
-  const [showMealCalculator, setShowMealCalculator] = useState(false);
-  const [dailyMealRate, setDailyMealRate] = useState('');
-  const [workingDaysPerWeek, setWorkingDaysPerWeek] = useState<5 | 6>(5);
-  const [mealMonth, setMealMonth] = useState(new Date().getMonth());
-  const [mealYear, setMealYear] = useState(new Date().getFullYear());
-
-  const calculateMealAllowance = () => {
-    const rate = parseFloat(dailyMealRate.replace(',', '.'));
-    if (isNaN(rate) || rate <= 0) {
-      alert('Lütfen geçerli bir günlük ücret giriniz.');
-      return;
-    }
-
-    let count = 0;
-    const date = new Date(mealYear, mealMonth, 1);
-    while (date.getMonth() === mealMonth) {
-      const day = date.getDay();
-      const isPublicHoliday = isHoliday(date);
-      
-      if (!isPublicHoliday) {
-        if (workingDaysPerWeek === 5) {
-          if (day !== 0 && day !== 6) count++;
-        } else {
-          if (day !== 0) count++;
-        }
-      }
-      date.setDate(date.getDate() + 1);
-    }
-
-    const total = rate * count;
-    setAmount(total.toString());
-    setShowMealCalculator(false);
-    if (!name) setName('Yemek Parası');
-  };
 
   useEffect(() => {
     if (isOpen) {
@@ -169,6 +141,9 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
         setName(initialData.name);
         setOwnerId(initialData.ownerId || user?.uid || '');
         setFlowType(initialData.flowType);
+        setCalculationType(initialData.calculationType || 'fixed');
+        setDailyRate(initialData.dailyRate?.toString() || '');
+        setWorkDaysPerWeek(initialData.workDaysPerWeek || 5);
         setAmount(initialData.amount.toString());
         setCurrency(initialData.currency || 'TRY');
         setTargetAccountId(initialData.targetAccountId);
@@ -177,6 +152,9 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
         setName('');
         setOwnerId(user?.uid || '');
         setFlowType('fixed');
+        setCalculationType('fixed');
+        setDailyRate('');
+        setWorkDaysPerWeek(5);
         setAmount('');
         setCurrency('TRY');
         setTargetAccountId(accounts.find((a: any) => a.type === 'asset')?.id || '');
@@ -190,8 +168,14 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
     if (!user || !householdId) return;
 
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (calculationType === 'fixed' && (isNaN(parsedAmount) || parsedAmount <= 0)) {
       alert('Lütfen geçerli bir tutar giriniz.');
+      return;
+    }
+
+    const parsedDailyRate = parseFloat(dailyRate.replace(',', '.'));
+    if (calculationType === 'daily_rate' && (isNaN(parsedDailyRate) || parsedDailyRate <= 0)) {
+      alert('Lütfen geçerli bir günlük ücret giriniz.');
       return;
     }
 
@@ -202,7 +186,10 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
         name,
         ownerId: ownerId || user.uid,
         flowType,
-        amount: parsedAmount,
+        calculationType,
+        dailyRate: calculationType === 'daily_rate' ? parsedDailyRate : undefined,
+        workDaysPerWeek: calculationType === 'daily_rate' ? workDaysPerWeek : undefined,
+        amount: calculationType === 'fixed' ? parsedAmount : 0, // Will be calculated by backend if daily_rate
         currency,
         targetAccountId,
         periodDay: flowType !== 'spot' ? parseInt(periodDay) : null,
@@ -278,7 +265,12 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => setFlowType(opt.id as IncomeFlowType)}
+                  onClick={() => {
+                    setFlowType(opt.id as IncomeFlowType);
+                    if (opt.id !== 'variable') {
+                      setCalculationType('fixed');
+                    }
+                  }}
                   className={`flex flex-col items-start p-4 rounded-2xl border transition-all ${
                     flowType === opt.id 
                       ? 'bg-emerald-500/10 border-emerald-500 text-white' 
@@ -292,136 +284,111 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Tutar ve Para Birimi</label>
-                <button
-                  type="button"
-                  onClick={() => setShowMealCalculator(!showMealCalculator)}
-                  className="text-[10px] font-bold text-emerald-500 hover:text-emerald-400 flex items-center gap-1 transition-colors"
-                >
-                  <Calculator className="w-3 h-3" />
-                  Yemek Parası Hesapla
-                </button>
-              </div>
-              
-              {showMealCalculator && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-4 bg-zinc-950 border border-emerald-500/30 rounded-2xl space-y-4 mb-2"
-                >
-                  <div className="flex items-start gap-2 p-2 bg-emerald-500/5 rounded-xl border border-emerald-500/10 mb-2">
-                    <Info className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
-                    <p className="text-[9px] text-emerald-400 leading-tight">
-                      Hesaplama yapılırken seçilen aydaki hafta sonları ve Türkiye resmi tatilleri (2025-2026) otomatik olarak düşülür.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Günlük Ücret</label>
-                      <input
-                        type="text"
-                        value={dailyMealRate}
-                        onChange={(e) => setDailyMealRate(e.target.value)}
-                        placeholder="Örn: 200"
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Çalışma Günü</label>
-                      <div className="flex bg-zinc-900 rounded-xl p-1 border border-zinc-800">
-                        <button
-                          type="button"
-                          onClick={() => setWorkingDaysPerWeek(5)}
-                          className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${workingDaysPerWeek === 5 ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-                        >
-                          5 GÜN
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setWorkingDaysPerWeek(6)}
-                          className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${workingDaysPerWeek === 6 ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-                        >
-                          6 GÜN
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Ay</label>
-                      <select
-                        value={mealMonth}
-                        onChange={(e) => setMealMonth(parseInt(e.target.value))}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none"
-                      >
-                        {['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'].map((m, i) => (
-                          <option key={i} value={i}>{m}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-zinc-500 font-bold uppercase">Yıl</label>
-                      <select
-                        value={mealYear}
-                        onChange={(e) => setMealYear(parseInt(e.target.value))}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none"
-                      >
-                        {[2024, 2025, 2026, 2027].map(y => (
-                          <option key={y} value={y}>{y}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+          {flowType === 'variable' && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="space-y-2 overflow-hidden"
+            >
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Hesaplama Yöntemi</label>
+              <div className="grid grid-cols-2 gap-2">
+                {CALCULATION_TYPE_OPTIONS.map((opt) => (
                   <button
+                    key={opt.id}
                     type="button"
-                    onClick={calculateMealAllowance}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+                    onClick={() => setCalculationType(opt.id as IncomeCalculationType)}
+                    className={`flex flex-col items-start p-4 rounded-2xl border transition-all ${
+                      calculationType === opt.id 
+                        ? 'bg-emerald-500/10 border-emerald-500 text-white' 
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                    }`}
                   >
-                    Hesapla ve Uygula (Resmi Tatiller Hariç)
+                    <span className="font-bold text-sm">{opt.label}</span>
+                    <span className="text-[10px] opacity-60">{opt.description}</span>
                   </button>
-                </motion.div>
-              )}
+                ))}
+              </div>
+            </motion.div>
+          )}
 
-              <div className="flex gap-2 overflow-hidden">
+          {calculationType === 'daily_rate' && flowType === 'variable' ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Günlük Ücret</label>
                 <input
                   type="text"
                   required
-                  value={formatAmount(amount)}
-                  onChange={(e) => setAmount(parseAmount(cleanAmountInput(e.target.value)))}
-                  placeholder="0,00"
-                  className="min-w-0 flex-1 bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
-                />
-                <div className="relative w-24 flex-shrink-0">
-                  <select
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none text-white cursor-pointer"
-                  >
-                    <option value="TRY">TRY</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-            {flowType !== 'spot' && (
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Ödeme Günü</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  required
-                  value={periodDay}
-                  onChange={(e) => setPeriodDay(e.target.value)}
+                  value={dailyRate}
+                  onChange={(e) => setDailyRate(e.target.value)}
+                  placeholder="Örn: 500"
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
-            )}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Haftalık Çalışma Günü</label>
+                <div className="flex bg-zinc-950 rounded-2xl p-1 border border-zinc-800 h-[50px]">
+                  <button
+                    type="button"
+                    onClick={() => setWorkDaysPerWeek(5)}
+                    className={`flex-1 py-1 text-xs font-bold rounded-xl transition-all ${workDaysPerWeek === 5 ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  >
+                    5 GÜN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkDaysPerWeek(6)}
+                    className={`flex-1 py-1 text-xs font-bold rounded-xl transition-all ${workDaysPerWeek === 6 ? 'bg-emerald-500 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  >
+                    6 GÜN
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Aylık Net Tutar</label>
+              <input
+                type="text"
+                required
+                value={formatAmount(amount)}
+                onChange={(e) => setAmount(parseAmount(cleanAmountInput(e.target.value)))}
+                placeholder="Örn: 5000"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Para Birimi</label>
+              <div className="relative">
+                <select 
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none text-white cursor-pointer"
+                >
+                  <option value="TRY">Türk Lirası (₺)</option>
+                  <option value="USD">Amerikan Doları ($)</option>
+                  <option value="EUR">Euro (€)</option>
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 pointer-events-none" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Ödeme Günü</label>
+              <div className="relative">
+                <select 
+                  value={periodDay}
+                  onChange={(e) => setPeriodDay(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 appearance-none text-white cursor-pointer"
+                >
+                  {Array.from({ length: 31 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>{i + 1}. Gün</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 pointer-events-none" />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -2977,10 +2944,20 @@ const Dashboard = () => {
         const nextDate = new Date(expected.expectedDate);
         nextDate.setMonth(nextDate.getMonth() + 1);
         
+        let nextAmount = source.amount;
+        if (source.calculationType === 'daily_rate' && source.dailyRate && source.workDaysPerWeek) {
+          nextAmount = calculateMonthlyAmountFromDailyRate(
+            source.dailyRate, 
+            source.workDaysPerWeek, 
+            nextDate.getMonth(), 
+            nextDate.getFullYear()
+          );
+        }
+        
         await createExpectedIncome(household.id, {
           sourceId: source.id,
           sourceName: source.name,
-          amount: source.amount,
+          amount: nextAmount,
           currency: source.currency,
           expectedDate: nextDate,
           status: 'pending',
@@ -3404,7 +3381,7 @@ const Dashboard = () => {
                   {household && user && household.ownerId === user.uid && (
                     <button
                       onClick={handleUpdateHousehold}
-                      disabled={isUpdatingHousehold || (householdName === household.name && householdCurrency === household.currency)}
+                      disabled={isUpdatingHousehold || !householdName.trim()}
                       className="px-6 py-2 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {isUpdatingHousehold ? (
@@ -3449,7 +3426,7 @@ const Dashboard = () => {
                   <div className="flex justify-end mb-8">
                     <button
                       onClick={handleUpdateHousehold}
-                      disabled={isUpdatingHousehold || (householdName === household.name && householdCurrency === household.currency)}
+                      disabled={isUpdatingHousehold || !householdName.trim()}
                       className="px-6 py-3 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full md:w-auto justify-center shadow-lg shadow-emerald-500/20"
                     >
                       {isUpdatingHousehold ? (
