@@ -20,6 +20,7 @@ interface IncomeViewProps {
   onAddIncome: () => void;
   onEditIncome: (source: IncomeSource) => void;
   onApproveIncome: (expected: ExpectedIncome, customAmount?: number) => void;
+  onCancelIncome: (expected: ExpectedIncome) => void;
   isPrivacyMode?: boolean;
 }
 
@@ -32,6 +33,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
   onAddIncome,
   onEditIncome,
   onApproveIncome,
+  onCancelIncome,
   isPrivacyMode = false
 }) => {
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
@@ -181,14 +183,25 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                     </div>
                   </motion.div>
                 ) : (
-                  <motion.button 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    onClick={() => startApprove(income)}
-                    className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-xl text-xs font-bold transition-all"
-                  >
-                    Tahsil Edildi Olarak İşaretle
-                  </motion.button>
+                  <div className="flex gap-2">
+                    <motion.button 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      onClick={() => startApprove(income)}
+                      className="flex-1 py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-xl text-xs font-bold transition-all"
+                    >
+                      Tahsil Edildi
+                    </motion.button>
+                    <motion.button 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      onClick={() => onCancelIncome(income)}
+                      className="p-2 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all"
+                      title="Tahsil Edilemedi (İptal Et)"
+                    >
+                      <X className="w-4 h-4" />
+                    </motion.button>
+                  </div>
                 )}
               </AnimatePresence>
             </div>

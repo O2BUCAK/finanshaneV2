@@ -71,7 +71,7 @@ import { createIncomeSource, updateIncomeSource, updateExpectedIncome, createExp
 import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, createInstallmentTransactions } from './lib/ledger';
 import { createExpenseSource, updateExpenseSource, deleteExpenseSource } from './lib/expenseSources';
 import { createPlannedExpense, updatePlannedExpense, deletePlannedExpense } from './lib/plannedExpenses';
-import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, IncomeCalculationType, PlannedExpense, Household, UserProfile, ExpenseSource } from './types';
+import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, IncomeCalculationType, PlannedExpense, Household, UserProfile, ExpenseSource, ExpenseFlowType, ExpectedExpense } from './types';
 import { 
   db, 
   auth,
@@ -1457,6 +1457,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
   const [isInstallment, setIsInstallment] = useState(false);
   const [installmentCount, setInstallmentCount] = useState('2');
   const [isSubscription, setIsSubscription] = useState(defaultIsSubscription);
+  const [recurringType, setRecurringType] = useState<'subscription' | 'bill' | 'fixed'>('subscription');
   const [isPlanned, setIsPlanned] = useState(defaultIsPlanned);
   const [periodDay, setPeriodDay] = useState(new Date().getDate().toString());
   const [loading, setLoading] = useState(false);
@@ -1475,6 +1476,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         setIsInstallment(initialData.isInstallment || false);
         setInstallmentCount(initialData.installmentCount?.toString() || '2');
         setIsSubscription(!!initialData.periodDay);
+        setRecurringType(initialData.flowType === 'variable' ? 'bill' : initialData.flowType === 'fixed' ? 'fixed' : 'subscription');
         setIsPlanned(!!initialData.dueDate);
         setPeriodDay(initialData.periodDay?.toString() || new Date().getDate().toString());
         
@@ -1547,7 +1549,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
           name: description,
           amount: parseFloat(amount),
           currency,
-          flowType: 'fixed' as const,
+          flowType: (recurringType === 'bill' ? 'variable' : recurringType === 'fixed' ? 'fixed' : 'subscription') as ExpenseFlowType,
           periodDay: parseInt(periodDay),
           sourceAccountId: creditAccountId,
           categoryId,
@@ -1615,8 +1617,8 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
       >
         <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-zinc-900 z-10">
           <h3 className="text-xl font-bold">
-            {initialData ? (isPlanned ? 'Planı Düzenle' : isSubscription ? 'Aboneliği Düzenle' : 'İşlemi Düzenle') : 
-             (isPlanned ? 'Yeni Plan' : isSubscription ? 'Yeni Abonelik' : 'Yeni İşlem')}
+            {initialData ? (isPlanned ? 'Planı Düzenle' : isSubscription ? (recurringType === 'bill' ? 'Faturayı Düzenle' : recurringType === 'fixed' ? 'Sabit Ödemeyi Düzenle' : 'Aboneliği Düzenle') : 'İşlemi Düzenle') : 
+             (isPlanned ? 'Yeni Plan' : isSubscription ? (recurringType === 'bill' ? 'Yeni Fatura' : recurringType === 'fixed' ? 'Yeni Sabit Ödeme' : 'Yeni Abonelik') : 'Yeni İşlem')}
           </h3>
           <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-xl transition-colors">
             <X className="w-5 h-5 text-zinc-300" />
@@ -1758,31 +1760,48 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
                     className="w-5 h-5 rounded border-zinc-700 text-emerald-500 focus:ring-emerald-500/20 bg-zinc-900"
                   />
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium text-zinc-200">Düzenli Ödeme (Abonelik)</span>
-                    <span className="text-xs text-zinc-400">Kira, abonelik gibi her ay tekrarlayan ödemeler</span>
+                    <span className="text-sm font-medium text-zinc-200">Düzenli Ödeme (Abonelik / Fatura)</span>
+                    <span className="text-xs text-zinc-400">Kira, abonelik veya her ay gelen faturalar</span>
                   </div>
                 </label>
 
                 {isSubscription && (
-                  <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Her Ayın Kaçında?</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="1"
-                        max="31"
-                        value={periodDay}
-                        onChange={(e) => setPeriodDay(e.target.value)}
-                        placeholder="1-31 arası gün girin"
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white font-bold"
-                      />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                        GÜN
-                      </div>
+                  <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex p-1 bg-zinc-900 rounded-xl border border-zinc-800">
+                      {(['subscription', 'bill', 'fixed'] as const).map((rt) => (
+                        <button
+                          key={rt}
+                          type="button"
+                          onClick={() => setRecurringType(rt)}
+                          className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                            recurringType === rt ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-300'
+                          }`}
+                        >
+                          {rt === 'subscription' ? 'Abonelik' : rt === 'bill' ? 'Fatura' : 'Sabit (Kira)'}
+                        </button>
+                      ))}
                     </div>
-                    <p className="text-[10px] text-zinc-500 italic px-1">
-                      * Ödeme her ayın bu gününde otomatik olarak gerçekleşecektir.
-                    </p>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Her Ayın Kaçında?</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={periodDay}
+                          onChange={(e) => setPeriodDay(e.target.value)}
+                          placeholder="1-31 arası gün girin"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white font-bold"
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                          GÜN
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 italic px-1">
+                        * {recurringType === 'subscription' ? 'Abonelik' : recurringType === 'bill' ? 'Fatura' : 'Ödeme'} her ayın bu gününde otomatik olarak gerçekleşecektir.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2615,7 +2634,11 @@ const AuditModal = ({ isOpen, onClose, logs }: { isOpen: boolean; onClose: () =>
   );
 };
 
-const NotificationsDropdown: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+const NotificationsDropdown: React.FC<{ 
+  isOpen: boolean; 
+  onClose: () => void;
+  notifications: any[];
+}> = ({ isOpen, onClose, notifications }) => {
   if (!isOpen) return null;
 
   return (
@@ -2629,43 +2652,28 @@ const NotificationsDropdown: React.FC<{ isOpen: boolean; onClose: () => void }> 
         </button>
       </div>
       <div className="max-h-[400px] overflow-y-auto p-2 bg-zinc-900/50 backdrop-blur-xl">
-        <div className="p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer group">
-          <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-              <Plus className="w-5 h-5 text-emerald-500" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-white font-medium">Yeni İşlem Eklendi</p>
-              <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">Market alışverişi için 450.00 TRY harcama eklendi.</p>
-              <p className="text-[10px] text-zinc-500 mt-1">Az önce</p>
-            </div>
-            <div className="w-2 h-2 bg-emerald-500 rounded-full mt-1.5 flex-shrink-0"></div>
+        {notifications.length === 0 ? (
+          <div className="p-8 text-center">
+            <Bell className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
+            <p className="text-xs text-zinc-500">Henüz yeni bir bildirim yok.</p>
           </div>
-        </div>
-        <div className="p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer group">
-          <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-              <AlertCircle className="w-5 h-5 text-amber-500" />
+        ) : (
+          notifications.map(notif => (
+            <div key={notif.id} className="p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer group">
+              <div className="flex gap-3">
+                <div className={`w-10 h-10 rounded-full ${notif.bgColor} flex items-center justify-center flex-shrink-0`}>
+                  {notif.icon}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-white font-medium">{notif.title}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{notif.message}</p>
+                  <p className="text-[10px] text-zinc-500 mt-1">{notif.time}</p>
+                </div>
+                {notif.type === 'warning' && <div className="w-2 h-2 bg-amber-500 rounded-full mt-1.5 flex-shrink-0"></div>}
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-white font-medium">Bütçe Uyarısı</p>
-              <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">Mutfak bütçenizin %80'ine ulaştınız.</p>
-              <p className="text-[10px] text-zinc-500 mt-1">2 saat önce</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-3 hover:bg-zinc-800/50 rounded-xl transition-colors cursor-pointer group">
-          <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-              <Info className="w-5 h-5 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-white font-medium">Sistem Güncellemesi</p>
-              <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">Yeni raporlama özellikleri eklendi. Hemen göz atın!</p>
-              <p className="text-[10px] text-zinc-500 mt-1">Dün</p>
-            </div>
-          </div>
-        </div>
+          ))
+        )}
       </div>
       <div className="p-3 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-xl text-center">
         <button className="text-xs text-emerald-500 hover:text-emerald-400 font-medium transition-colors">
@@ -2723,7 +2731,7 @@ const Dashboard = () => {
   const [isKVKKModalOpen, setIsKVKKModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(true);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('theme');
     if (saved) return saved as 'light' | 'dark';
@@ -2928,6 +2936,90 @@ const Dashboard = () => {
     household ? `households/${household.id}/plannedExpenses` : '',
     plannedExpenseConstraints
   );
+
+  const expectedExpenseConstraints = useMemo(() => [orderBy('expectedDate', 'asc')], []);
+  const { data: expectedExpenses } = useCollection<ExpectedExpense>(
+    household ? `households/${household.id}/expectedExpenses` : '',
+    expectedExpenseConstraints
+  );
+
+  const notifications = useMemo(() => {
+    const list: any[] = [];
+    const now = new Date();
+    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    // 1. Low Balance
+    accounts.forEach(acc => {
+      if (acc.type === 'asset' && acc.balance < 500 && acc.currency === 'TRY') {
+        list.push({
+          id: `low-balance-${acc.id}`,
+          title: 'Düşük Bakiye Uyarısı',
+          message: `${acc.name} hesabınızın bakiyesi ${acc.balance.toFixed(2)} ${acc.currency} altına düştü.`,
+          type: 'warning',
+          time: 'Şimdi',
+          icon: <AlertCircle className="w-5 h-5 text-amber-500" />,
+          bgColor: 'bg-amber-500/10'
+        });
+      }
+    });
+
+    // 2. Upcoming Planned Expenses
+    plannedExpenses.forEach(pe => {
+      const dueDate = new Date(pe.dueDate);
+      if (pe.status === 'pending' && dueDate >= now && dueDate <= threeDaysFromNow) {
+        list.push({
+          id: `upcoming-expense-${pe.id}`,
+          title: 'Yaklaşan Ödeme',
+          message: `${pe.title} ödemenizin tarihi yaklaşıyor (${dueDate.toLocaleDateString('tr-TR')}).`,
+          type: 'info',
+          time: 'Yakında',
+          icon: <Clock className="w-5 h-5 text-blue-500" />,
+          bgColor: 'bg-blue-500/10'
+        });
+      }
+    });
+
+    // 3. Upcoming Expected Incomes
+    expectedIncomes.forEach(ei => {
+      const expectedDate = new Date(ei.expectedDate);
+      if (ei.status === 'pending' && expectedDate >= now && expectedDate <= threeDaysFromNow) {
+        list.push({
+          id: `upcoming-income-${ei.id}`,
+          title: 'Beklenen Gelir',
+          message: `${ei.sourceName} gelirinizin tahsilat tarihi yaklaşıyor.`,
+          type: 'success',
+          time: 'Yakında',
+          icon: <TrendingUp className="w-5 h-5 text-emerald-500" />,
+          bgColor: 'bg-emerald-500/10'
+        });
+      }
+    });
+
+    // 4. Recent Transactions
+    transactions.forEach(tx => {
+      const txDate = new Date(tx.date);
+      if (txDate >= oneDayAgo) {
+        list.push({
+          id: `recent-tx-${tx.id}`,
+          title: 'Yeni İşlem',
+          message: `${tx.description} için ${tx.amount.toFixed(2)} ${tx.currency} işlem gerçekleşti.`,
+          type: 'success',
+          time: 'Son 24 saat',
+          icon: <Plus className="w-5 h-5 text-emerald-500" />,
+          bgColor: 'bg-emerald-500/10'
+        });
+      }
+    });
+
+    return list.slice(0, 8);
+  }, [accounts, transactions, expectedIncomes, plannedExpenses]);
+
+  useEffect(() => {
+    if (notifications.length > 0) {
+      setHasUnreadNotifications(true);
+    }
+  }, [notifications.length]);
 
   const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
 
@@ -3167,6 +3259,47 @@ const Dashboard = () => {
     }
   };
 
+  const handleCancelIncome = async (expected: ExpectedIncome) => {
+    if (!household || !user) return;
+    
+    try {
+      // 1. Update expected income status to cancelled
+      await updateExpectedIncome(household.id, expected.id, {
+        status: 'cancelled',
+      });
+
+      // 2. If it's a fixed/variable source, generate the NEXT expected income
+      const source = incomeSources.find(s => s.id === expected.sourceId);
+      if (source && source.flowType !== 'spot') {
+        const nextDate = new Date(expected.expectedDate);
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        
+        let nextAmount = source.amount;
+        if (source.calculationType === 'daily_rate' && source.dailyRate && source.workDaysPerWeek) {
+          nextAmount = calculateMonthlyAmountFromDailyRate(
+            source.dailyRate, 
+            source.workDaysPerWeek, 
+            nextDate.getMonth(), 
+            nextDate.getFullYear()
+          );
+        }
+        
+        await createExpectedIncome(household.id, {
+          sourceId: source.id,
+          sourceName: source.name,
+          amount: nextAmount,
+          currency: source.currency,
+          expectedDate: nextDate,
+          status: 'pending',
+          targetAccountId: source.targetAccountId,
+          ownerId: source.ownerId,
+        });
+      }
+    } catch (error) {
+      console.error('Cancel income error:', error);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       {/* Sidebar Overlay */}
@@ -3327,6 +3460,7 @@ const Dashboard = () => {
               <NotificationsDropdown 
                 isOpen={isNotificationsOpen} 
                 onClose={() => setIsNotificationsOpen(false)} 
+                notifications={notifications}
               />
             </div>
 
@@ -3404,6 +3538,7 @@ const Dashboard = () => {
                 setIsIncomeModalOpen(true);
               }}
               onApproveIncome={handleApproveIncome}
+              onCancelIncome={handleCancelIncome}
               isPrivacyMode={isPrivacyMode}
             />
           )}
@@ -3465,6 +3600,11 @@ const Dashboard = () => {
               transactions={transactions}
               categories={categories}
               accounts={accounts}
+              expectedIncomes={expectedIncomes}
+              plannedExpenses={plannedExpenses}
+              expectedExpenses={expectedExpenses}
+              incomeSources={incomeSources}
+              expenseSources={expenseSources}
               formatWithEquivalent={formatWithEquivalent}
               convertToTRY={convertToTRY}
             />

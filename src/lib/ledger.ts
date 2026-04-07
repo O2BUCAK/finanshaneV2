@@ -1,22 +1,22 @@
 import { localDB } from '../db';
 import { Transaction, Account } from '../types';
-import { db, doc, deleteDoc, setDoc } from './firebase';
+import { db, doc, deleteDoc, setDoc, handleFirestoreError, OperationType } from './firebase';
 
 export async function createLedgerTransaction(
   householdId: string,
   txData: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>
 ) {
-  try {
-    const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `tx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const now = new Date();
-    
-    const newTx: Transaction = {
-      ...txData,
-      id,
-      createdAt: now,
-      updatedAt: now
-    };
+  const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `tx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const now = new Date();
+  
+  const newTx: Transaction = {
+    ...txData,
+    id,
+    createdAt: now,
+    updatedAt: now
+  };
 
+  try {
     await localDB.transaction('rw', [localDB.accounts, localDB.transactions], async () => {
       const debitAccount = await localDB.accounts.get(txData.debitAccountId);
       const creditAccount = await localDB.accounts.get(txData.creditAccountId);
@@ -45,10 +45,16 @@ export async function createLedgerTransaction(
     });
 
     // Sync to Firestore
-    await setDoc(doc(db, `households/${householdId}/transactions/${id}`), newTx);
+    const path = `households/${householdId}/transactions/${id}`;
+    try {
+      await setDoc(doc(db, path), newTx);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, path);
+    }
     
     return id;
   } catch (error) {
+    if (error instanceof Error && error.message.includes('FirestoreErrorInfo')) throw error;
     console.error('Ledger transaction error:', error);
     throw error;
   }

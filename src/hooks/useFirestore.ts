@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { localDB } from '../db';
 import { Table } from 'dexie';
-import { db, collection, query, onSnapshot } from '../lib/firebase';
+import { db, collection, query, onSnapshot, handleFirestoreError, OperationType } from '../lib/firebase';
 
 // Helper to convert Firestore timestamps to Dates
 const convertTimestamps = (data: any) => {
@@ -62,7 +62,7 @@ export function useCollection<T>(
         }
       }
     }, (error) => {
-      console.error(`Firestore sync error for ${path}:`, error);
+      handleFirestoreError(error, OperationType.GET, path);
     });
 
     return () => unsubscribe();

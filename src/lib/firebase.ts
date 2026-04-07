@@ -59,3 +59,5 @@ export {
   GoogleAuthProvider,
   browserPopupRedirectResolver
 };
+
+export * from './error-handler';

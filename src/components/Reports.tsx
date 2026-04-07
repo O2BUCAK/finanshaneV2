@@ -1,12 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { PieChart } from 'lucide-react';
-import { Account, Transaction, Category } from '../types';
+import { PieChart, RefreshCw } from 'lucide-react';
+import { Account, Transaction, Category, ExpectedIncome, PlannedExpense, ExpectedExpense, IncomeSource, ExpenseSource } from '../types';
 import { SankeyChart } from './SankeyChart';
 
 interface ReportsProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: Account[];
+  expectedIncomes: ExpectedIncome[];
+  plannedExpenses: PlannedExpense[];
+  expectedExpenses: ExpectedExpense[];
+  incomeSources: IncomeSource[];
+  expenseSources: ExpenseSource[];
   formatWithEquivalent: (amount: number, currency: string) => string;
   convertToTRY: (amount: number, currency: string) => number;
   members?: Record<string, any>;
@@ -16,12 +21,18 @@ export const Reports: React.FC<ReportsProps> = ({
   transactions: allTransactions,
   accounts,
   categories,
+  expectedIncomes,
+  plannedExpenses,
+  expectedExpenses,
+  incomeSources,
+  expenseSources,
   formatWithEquivalent,
   convertToTRY,
   members
 }) => {
   const [period, setPeriod] = useState<'currentMonth' | 'lastMonth' | 'allTime'>('currentMonth');
   const [selectedMemberId, setSelectedMemberId] = useState<string | 'all'>('all');
+  const [showPredicted, setShowPredicted] = useState(true);
 
   const transactions = useMemo(() => 
     selectedMemberId === 'all' ? allTransactions : allTransactions.filter(t => t.userId === selectedMemberId),
@@ -66,6 +77,44 @@ export const Reports: React.FC<ReportsProps> = ({
       }
     });
 
+    // Add Predicted Incomes
+    if (showPredicted && period === 'currentMonth') {
+      // 1. Existing pending expected incomes
+      const pendingSourceIds = new Set();
+      expectedIncomes.forEach(ei => {
+        const eiDate = new Date(ei.expectedDate);
+        const isThisMonth = eiDate.getMonth() === currentMonth && eiDate.getFullYear() === currentYear;
+        
+        if (ei.status === 'pending' && isThisMonth) {
+          const amountTRY = convertToTRY(ei.amount, ei.currency || 'TRY');
+          const name = `(Tahmini) ${ei.sourceName}`;
+          incomeBySource[name] = (incomeBySource[name] || 0) + amountTRY;
+          totalIncome += amountTRY;
+          pendingSourceIds.add(ei.sourceId);
+        }
+      });
+
+      // 2. Recurring sources that don't have a pending item for this month yet
+      incomeSources.forEach(is => {
+        if (!is.isArchived && is.flowType !== 'spot' && !pendingSourceIds.has(is.id)) {
+          // Check if it was already realized this month
+          const alreadyRealized = transactions.some(tx => {
+            const txDate = new Date(tx.date);
+            const isThisMonth = txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
+            const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
+            return isThisMonth && creditAcc?.name === is.name;
+          });
+
+          if (!alreadyRealized) {
+            const amountTRY = convertToTRY(is.amount, is.currency || 'TRY');
+            const name = `(Tahmini) ${is.name}`;
+            incomeBySource[name] = (incomeBySource[name] || 0) + amountTRY;
+            totalIncome += amountTRY;
+          }
+        }
+      });
+    }
+
     // 2. Calculate Expenses by Category
     const expenseByCategory: Record<string, number> = {};
     let totalExpense = 0;
@@ -82,8 +131,65 @@ export const Reports: React.FC<ReportsProps> = ({
       }
     });
 
-    // If no income, return empty
-    if (totalIncome === 0) {
+    // Add Predicted Expenses
+    if (showPredicted && period === 'currentMonth') {
+      const pendingPlannedIds = new Set();
+      const pendingExpectedIds = new Set();
+
+      // 1. Planned Expenses
+      plannedExpenses.forEach(pe => {
+        const peDate = new Date(pe.dueDate);
+        const isThisMonth = peDate.getMonth() === currentMonth && peDate.getFullYear() === currentYear;
+
+        if (pe.status === 'pending' && isThisMonth) {
+          const amountTRY = convertToTRY(pe.amount, pe.currency || 'TRY');
+          const category = categories.find(c => c.id === pe.categoryId);
+          const name = `(Tahmini) ${category?.name || 'Diğer'}`;
+          expenseByCategory[name] = (expenseByCategory[name] || 0) + amountTRY;
+          totalExpense += amountTRY;
+          pendingPlannedIds.add(pe.id);
+        }
+      });
+
+      // 2. Expected Expenses
+      expectedExpenses.forEach(ee => {
+        const eeDate = new Date(ee.expectedDate);
+        const isThisMonth = eeDate.getMonth() === currentMonth && eeDate.getFullYear() === currentYear;
+
+        if (ee.status === 'pending' && isThisMonth) {
+          const amountTRY = convertToTRY(ee.amount, ee.currency || 'TRY');
+          const category = categories.find(c => c.id === ee.categoryId);
+          const name = `(Tahmini) ${category?.name || 'Diğer'}`;
+          expenseByCategory[name] = (expenseByCategory[name] || 0) + amountTRY;
+          totalExpense += amountTRY;
+          pendingExpectedIds.add(ee.sourceId);
+        }
+      });
+
+      // 3. Recurring expense sources (subscriptions etc) not yet generated or pending
+      expenseSources.forEach(es => {
+        if (!es.isArchived && !pendingExpectedIds.has(es.id)) {
+          // Check if already paid this month
+          const alreadyPaid = transactions.some(tx => {
+            const txDate = new Date(tx.date);
+            const isThisMonth = txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
+            const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
+            return isThisMonth && debitAcc?.id === es.categoryId;
+          });
+
+          if (!alreadyPaid) {
+            const amountTRY = convertToTRY(es.amount, es.currency || 'TRY');
+            const category = categories.find(c => c.id === es.categoryId);
+            const name = `(Tahmini) ${category?.name || 'Diğer'}`;
+            expenseByCategory[name] = (expenseByCategory[name] || 0) + amountTRY;
+            totalExpense += amountTRY;
+          }
+        }
+      });
+    }
+
+    // If no data at all, return empty
+    if (totalIncome === 0 && totalExpense === 0) {
       return { nodes: [], links: [] };
     }
 
@@ -124,7 +230,7 @@ export const Reports: React.FC<ReportsProps> = ({
     }
 
     return { nodes, links };
-  }, [transactions, accounts, period, convertToTRY]);
+  }, [transactions, accounts, period, convertToTRY, showPredicted, expectedIncomes, plannedExpenses, expectedExpenses, incomeSources, expenseSources]);
 
   return (
     <div className="space-y-6 pb-8">
@@ -191,6 +297,20 @@ export const Reports: React.FC<ReportsProps> = ({
               Tümü
             </button>
           </div>
+
+          {period === 'currentMonth' && (
+            <button
+              onClick={() => setShowPredicted(!showPredicted)}
+              className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-xs font-bold uppercase tracking-wide transition-all border ${
+                showPredicted 
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' 
+                  : 'bg-secondary/50 border-border text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <RefreshCw className={`w-4 h-4 ${showPredicted ? 'animate-spin-slow' : ''}`} />
+              Tahmini Veriler: {showPredicted ? 'Açık' : 'Kapalı'}
+            </button>
+          )}
         </div>
       </div>
 
