@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { PieChart, RefreshCw } from 'lucide-react';
+import { PieChart, RefreshCw, LayoutGrid, BarChart3, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
 import { Account, Transaction, Category, ExpectedIncome, PlannedExpense, ExpectedExpense, IncomeSource, ExpenseSource } from '../types';
 import { SankeyChart } from './SankeyChart';
 
@@ -33,13 +33,57 @@ export const Reports: React.FC<ReportsProps> = ({
   const [period, setPeriod] = useState<'currentMonth' | 'lastMonth' | 'allTime'>('currentMonth');
   const [selectedMemberId, setSelectedMemberId] = useState<string | 'all'>('all');
   const [showPredicted, setShowPredicted] = useState(true);
+  const [viewMode, setViewMode] = useState<'chart' | 'list'>('chart');
+  const [accountGroupBy, setAccountGroupBy] = useState<'none' | 'institution' | 'type' | 'branch'>('none');
+  const [accountSearch, setAccountSearch] = useState('');
 
   const transactions = useMemo(() => 
     selectedMemberId === 'all' ? allTransactions : allTransactions.filter(t => t.userId === selectedMemberId),
     [allTransactions, selectedMemberId]
   );
 
-  const sankeyData = useMemo(() => {
+  const groupedAccounts = useMemo(() => {
+    const assetAccounts = accounts.filter(a => 
+      a.type === 'asset' && 
+      !a.isArchived &&
+      (accountSearch === '' || a.name.toLowerCase().includes(accountSearch.toLowerCase()) || a.institution?.toLowerCase().includes(accountSearch.toLowerCase()))
+    );
+
+    if (accountGroupBy === 'none') return { 'Tüm Varlıklar': assetAccounts };
+
+    const groups: Record<string, Account[]> = {};
+    assetAccounts.forEach(acc => {
+      let key = 'Diğer';
+      if (accountGroupBy === 'institution') {
+        key = acc.institution || 'Kurum Belirtilmemiş';
+      } else if (accountGroupBy === 'type') {
+        if (acc.assetDetails?.assetType) {
+          const typeMap: any = { stock: 'Hisse Senetleri', crypto: 'Kripto Varlıklar', fund: 'Yatırım Fonları' };
+          key = typeMap[acc.assetDetails.assetType] || 'Diğer Yatırımlar';
+        } else {
+          const subTypeMap: any = { 
+            liquidity_deposit: 'Vadesiz/Mevduat', 
+            investment: 'Yatırım', 
+            credit_debt: 'Alacaklar',
+            transport: 'Ulaşım Kartları',
+            food: 'Yemek Kartları',
+            corporate_gift: 'Kurumsal Hediyeler'
+          };
+          key = subTypeMap[acc.subType] || 'Diğer';
+        }
+      } else if (accountGroupBy === 'branch') {
+        const branchMap: any = { banking: 'Bankacılık', crypto: 'Kripto', social_gift: 'Sosyal/Yan Haklar' };
+        key = branchMap[acc.branch] || 'Diğer';
+      }
+      
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(acc);
+    });
+
+    return groups;
+  }, [accounts, accountGroupBy, accountSearch]);
+
+  const reportData = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -56,11 +100,6 @@ export const Reports: React.FC<ReportsProps> = ({
       return true;
     });
 
-    // We need to build nodes and links
-    // Nodes: Income sources, "Toplam Gelir", Expense categories, "Artan Gelir"
-    const nodes: any[] = [];
-    const links: any[] = [];
-
     // 1. Calculate Income by Source
     const incomeBySource: Record<string, number> = {};
     let totalIncome = 0;
@@ -69,7 +108,6 @@ export const Reports: React.FC<ReportsProps> = ({
       const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
       const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
       
-      // Income transaction: debit is asset, credit is income
       if (debitAcc?.type === 'asset' && creditAcc?.type === 'income') {
         const amountTRY = convertToTRY(tx.amount, tx.currency || 'TRY');
         incomeBySource[creditAcc.name] = (incomeBySource[creditAcc.name] || 0) + amountTRY;
@@ -77,9 +115,7 @@ export const Reports: React.FC<ReportsProps> = ({
       }
     });
 
-    // Add Predicted Incomes
     if (showPredicted && period === 'currentMonth') {
-      // 1. Existing pending expected incomes
       const pendingSourceIds = new Set();
       expectedIncomes.forEach(ei => {
         const eiDate = new Date(ei.expectedDate);
@@ -94,10 +130,8 @@ export const Reports: React.FC<ReportsProps> = ({
         }
       });
 
-      // 2. Recurring sources that don't have a pending item for this month yet
       incomeSources.forEach(is => {
         if (!is.isArchived && is.flowType !== 'spot' && !pendingSourceIds.has(is.id)) {
-          // Check if it was already realized this month
           const alreadyRealized = transactions.some(tx => {
             const txDate = new Date(tx.date);
             const isThisMonth = txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
@@ -123,7 +157,6 @@ export const Reports: React.FC<ReportsProps> = ({
       const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
       const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
       
-      // Expense transaction: debit is expense, credit is asset
       if (debitAcc?.type === 'expense' && creditAcc?.type === 'asset') {
         const amountTRY = convertToTRY(tx.amount, tx.currency || 'TRY');
         expenseByCategory[debitAcc.name] = (expenseByCategory[debitAcc.name] || 0) + amountTRY;
@@ -131,12 +164,9 @@ export const Reports: React.FC<ReportsProps> = ({
       }
     });
 
-    // Add Predicted Expenses
     if (showPredicted && period === 'currentMonth') {
-      const pendingPlannedIds = new Set();
       const pendingExpectedIds = new Set();
 
-      // 1. Planned Expenses
       plannedExpenses.forEach(pe => {
         const peDate = new Date(pe.dueDate);
         const isThisMonth = peDate.getMonth() === currentMonth && peDate.getFullYear() === currentYear;
@@ -147,11 +177,9 @@ export const Reports: React.FC<ReportsProps> = ({
           const name = `(Tahmini) ${category?.name || 'Diğer'}`;
           expenseByCategory[name] = (expenseByCategory[name] || 0) + amountTRY;
           totalExpense += amountTRY;
-          pendingPlannedIds.add(pe.id);
         }
       });
 
-      // 2. Expected Expenses
       expectedExpenses.forEach(ee => {
         const eeDate = new Date(ee.expectedDate);
         const isThisMonth = eeDate.getMonth() === currentMonth && eeDate.getFullYear() === currentYear;
@@ -166,10 +194,8 @@ export const Reports: React.FC<ReportsProps> = ({
         }
       });
 
-      // 3. Recurring expense sources (subscriptions etc) not yet generated or pending
       expenseSources.forEach(es => {
         if (!es.isArchived && !pendingExpectedIds.has(es.id)) {
-          // Check if already paid this month
           const alreadyPaid = transactions.some(tx => {
             const txDate = new Date(tx.date);
             const isThisMonth = txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
@@ -188,12 +214,18 @@ export const Reports: React.FC<ReportsProps> = ({
       });
     }
 
-    // If no data at all, return empty
+    return { incomeBySource, totalIncome, expenseByCategory, totalExpense };
+  }, [transactions, accounts, period, convertToTRY, showPredicted, expectedIncomes, plannedExpenses, expectedExpenses, incomeSources, expenseSources]);
+
+  const sankeyData = useMemo(() => {
+    const { incomeBySource, totalIncome, expenseByCategory, totalExpense } = reportData;
+    const nodes: any[] = [];
+    const links: any[] = [];
+
     if (totalIncome === 0 && totalExpense === 0) {
       return { nodes: [], links: [] };
     }
 
-    // Add Income Nodes
     const incomeColors = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'];
     Object.entries(incomeBySource).forEach(([name, amount], i) => {
       if (amount > 0) {
@@ -203,10 +235,8 @@ export const Reports: React.FC<ReportsProps> = ({
       }
     });
 
-    // Add Total Income Node
     nodes.push({ id: 'total_income', name: 'Toplam Gelir', value: totalIncome, displayValue: totalIncome, color: '#3b82f6' });
 
-    // Add Expense Nodes
     const expenseColors = ['#3b82f6', '#f59e0b', '#ec4899', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316'];
     Object.entries(expenseByCategory).forEach(([name, amount], i) => {
       if (amount > 0) {
@@ -216,31 +246,53 @@ export const Reports: React.FC<ReportsProps> = ({
       }
     });
 
-    // Add Remaining Income Node
     const remaining = totalIncome - totalExpense;
     if (remaining > 0) {
       nodes.push({ id: 'remaining', name: 'Artan Gelir', value: remaining, color: '#22c55e' });
       links.push({ source: 'total_income', target: 'remaining', value: remaining });
     } else if (remaining < 0) {
-      // If expenses > income, we might want to show deficit
       nodes.push({ id: 'deficit', name: 'Bütçe Açığı', value: Math.abs(remaining), color: '#ef4444' });
-      // To make Sankey work, deficit should flow INTO total income or expenses
-      // A simple way is to flow from deficit to total_income to balance it
       links.push({ source: 'deficit', target: 'total_income', value: Math.abs(remaining) });
     }
 
     return { nodes, links };
-  }, [transactions, accounts, period, convertToTRY, showPredicted, expectedIncomes, plannedExpenses, expectedExpenses, incomeSources, expenseSources]);
+  }, [reportData]);
 
   return (
     <div className="space-y-6 pb-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-black tracking-tighter text-foreground">Nakit Akış Analizi</h1>
-          <p className="text-muted-foreground text-sm font-medium mt-1">Gelir ve giderlerinizin görsel akış diyagramı</p>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Gelir ve giderlerinizin detaylı analizi</p>
         </div>
         
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
+            <button
+              onClick={() => setViewMode('chart')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                viewMode === 'chart' 
+                  ? 'bg-background text-foreground shadow-sm' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>Akış Grafiği</span>
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                viewMode === 'list' 
+                  ? 'bg-background text-foreground shadow-sm' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span>Liste Görünümü</span>
+            </button>
+          </div>
+
           {/* Member Filter */}
           {members && Object.keys(members).length > 1 && (
             <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
@@ -314,24 +366,162 @@ export const Reports: React.FC<ReportsProps> = ({
         </div>
       </div>
 
-      <div className="corporate-card p-8 min-h-[500px] flex items-center justify-center relative overflow-hidden">
-        {sankeyData.nodes.length > 0 ? (
-          <div className="w-full h-[400px]">
-            <SankeyChart 
-              data={sankeyData} 
-              formatCurrency={(val) => formatWithEquivalent(val, 'TRY')}
-            />
-          </div>
-        ) : (
-          <div className="text-center">
-            <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
-              <PieChart className="w-6 h-6 text-muted-foreground/50" />
+      {viewMode === 'chart' ? (
+        <div className="corporate-card p-8 min-h-[500px] flex items-center justify-center relative overflow-hidden">
+          {sankeyData.nodes.length > 0 ? (
+            <div className="w-full h-[400px]">
+              <SankeyChart 
+                data={sankeyData} 
+                formatCurrency={(val) => formatWithEquivalent(val, 'TRY')}
+              />
             </div>
-            <p className="text-base font-bold text-foreground mb-1">Yeterli veri bulunmuyor</p>
-            <p className="text-xs text-muted-foreground font-medium">Gelir ve gider işlemlerinizi ekledikçe grafik burada oluşacaktır.</p>
+          ) : (
+            <div className="text-center">
+              <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
+                <PieChart className="w-6 h-6 text-muted-foreground/50" />
+              </div>
+              <p className="text-base font-bold text-foreground mb-1">Yeterli veri bulunmuyor</p>
+              <p className="text-xs text-muted-foreground font-medium">Gelir ve gider işlemlerinizi ekledikçe grafik burada oluşacaktır.</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Accounts Section */}
+          <div className="corporate-card p-6 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <Wallet className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tighter">Hesaplar</h3>
+                  <p className="text-xs text-muted-foreground font-medium">Varlık dağılımı</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <select 
+                  value={accountGroupBy}
+                  onChange={(e) => setAccountGroupBy(e.target.value as any)}
+                  className="text-[10px] font-bold uppercase tracking-wider bg-secondary/50 border-none rounded-lg px-2 py-1 focus:ring-0"
+                >
+                  <option value="none">Gruplama Yok</option>
+                  <option value="institution">Kurum</option>
+                  <option value="type">Tür</option>
+                  <option value="branch">Branş</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="relative">
+              <input 
+                type="text"
+                placeholder="Hesap veya kurum ara..."
+                value={accountSearch}
+                onChange={(e) => setAccountSearch(e.target.value)}
+                className="w-full bg-secondary/30 border-none rounded-xl px-4 py-2 text-xs font-medium placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary/20"
+              />
+            </div>
+
+            <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+              {Object.entries(groupedAccounts).map(([groupName, accs]) => {
+                const groupTotal = accs.reduce((sum, a) => sum + convertToTRY(a.balance, a.currency), 0);
+                if (accs.length === 0) return null;
+                
+                return (
+                  <div key={groupName} className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-border/50 pb-1">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{groupName}</h4>
+                      <span className="text-[10px] font-black font-mono text-primary">{formatWithEquivalent(groupTotal, 'TRY')}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {accs.map(acc => (
+                        <div key={acc.id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/20 border border-border/30 hover:border-primary/30 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-background flex items-center justify-center text-lg shadow-sm">
+                              {acc.icon || '💰'}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold leading-none">{acc.name}</span>
+                              {acc.institution && <span className="text-[10px] text-muted-foreground font-medium mt-1">{acc.institution}</span>}
+                            </div>
+                          </div>
+                          <span className="text-sm font-black font-mono">
+                            {formatWithEquivalent(acc.balance, acc.currency)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Income Section */}
+          <div className="corporate-card p-6 space-y-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-emerald-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tighter">Gelirler</h3>
+                <p className="text-xs text-muted-foreground font-medium">Kaynak bazlı dağılım</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(reportData.incomeBySource).map(([name, amount]) => (
+                <div key={name} className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
+                  <span className={`text-sm font-bold ${name.includes('(Tahmini)') ? 'text-muted-foreground italic' : ''}`}>
+                    {name}
+                  </span>
+                  <span className="text-sm font-black font-mono text-emerald-600">
+                    {formatWithEquivalent(amount, 'TRY')}
+                  </span>
+                </div>
+              ))}
+              <div className="pt-2 border-t border-border flex justify-between items-center">
+                <span className="text-xs font-black uppercase text-muted-foreground">Toplam</span>
+                <span className="text-base font-black font-mono text-emerald-600">
+                  {formatWithEquivalent(reportData.totalIncome, 'TRY')}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Expense Section */}
+          <div className="corporate-card p-6 space-y-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-2xl bg-rose-500/10 flex items-center justify-center">
+                <TrendingDown className="w-5 h-5 text-rose-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tighter">Giderler</h3>
+                <p className="text-xs text-muted-foreground font-medium">Kategori bazlı dağılım</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(reportData.expenseByCategory).map(([name, amount]) => (
+                <div key={name} className="flex items-center justify-between p-3 rounded-xl bg-rose-500/5 border border-rose-500/10">
+                  <span className={`text-sm font-bold ${name.includes('(Tahmini)') ? 'text-muted-foreground italic' : ''}`}>
+                    {name}
+                  </span>
+                  <span className="text-sm font-black font-mono text-rose-600">
+                    {formatWithEquivalent(amount, 'TRY')}
+                  </span>
+                </div>
+              ))}
+              <div className="pt-2 border-t border-border flex justify-between items-center">
+                <span className="text-xs font-black uppercase text-muted-foreground">Toplam</span>
+                <span className="text-base font-black font-mono text-rose-600">
+                  {formatWithEquivalent(reportData.totalExpense, 'TRY')}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
