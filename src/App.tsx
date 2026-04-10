@@ -472,6 +472,7 @@ const BRANCH_OPTIONS = [
   { id: 'banking', label: 'Bankacılık', icon: Building2, color: 'text-blue-500' },
   { id: 'crypto', label: 'Kripto Borsaları', icon: Bitcoin, color: 'text-orange-500' },
   { id: 'social_gift', label: 'Sosyal ve Hediye Kartları', icon: Gift, color: 'text-purple-500' },
+  { id: 'personal', label: 'Kişisel ve Nakit', icon: Wallet, color: 'text-emerald-500' },
 ];
 
 const SUBTYPE_OPTIONS: Record<string, { id: string; label: string }[]> = {
@@ -489,6 +490,11 @@ const SUBTYPE_OPTIONS: Record<string, { id: string; label: string }[]> = {
     { id: 'transport', label: 'Ulaşım' },
     { id: 'food', label: 'Yemek' },
     { id: 'corporate_gift', label: 'Kurumsal Hediye' },
+  ],
+  personal: [
+    { id: 'cash', label: 'Nakit Para' },
+    { id: 'personal_debt', label: 'Kişisel Borç (Alınan)' },
+    { id: 'personal_loan', label: 'Kişisel Alacak (Verilen)' },
   ],
 };
 
@@ -556,6 +562,7 @@ const INSTITUTION_OPTIONS: Record<string, string[]> = {
   banking: ['Garanti BBVA', 'Akbank', 'İş Bankası', 'Ziraat Bankası', 'VakıfBank', 'Halkbank', 'QNB Finansbank', 'DenizBank', 'Kuveyt Türk', 'Enpara', 'Papara', 'TEB', 'ING', 'HSBC', 'Odeabank', 'Burgan Bank', 'Alternatif Bank', 'Anadolubank', 'Fibabanka', 'Şekerbank', 'Emlak Katılım', 'Vakıf Katılım', 'Türkiye Finans', 'Albaraka Türk'],
   crypto: ['Bitexen Global', 'Binance', 'Paribu', 'BtcTurk', 'OKX', 'KuCoin', 'Coinbase', 'Gate.io', 'Huobi', 'Kraken', 'Bitfinex', 'Mexc'],
   social_gift: ['Sodexo', 'Ticket', 'Multinet', 'Metropol', 'Yemeksepeti', 'İstanbulkart', 'Ankarakart', 'İzmirim Kart', 'Hopi', 'Boyner', 'Migros Money', 'CarrefourSA Kart'],
+  personal: ['Nakit', 'Kişisel', 'Elden', 'Aile'],
 };
 
 const ASSET_OPTIONS = {
@@ -659,6 +666,14 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   // Credit Card states
   const [creditLimit, setCreditLimit] = useState('');
   const [statementDay, setStatementDay] = useState('1');
+
+  useEffect(() => {
+    if (subType === 'personal_debt' || subType === 'credit_card' || subType === 'credit_debt') {
+      setType('liability');
+    } else {
+      setType('asset');
+    }
+  }, [subType]);
 
   const handleQuantityChange = (val: string) => {
     setAssetQuantity(val);
@@ -1533,7 +1548,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
         return;
       }
 
-      if (isPlanned && type === 'expense') {
+      if (isPlanned && (type === 'expense' || type === 'transfer')) {
         const plannedData = {
           title: description,
           ownerId: userId || user.uid,
@@ -1541,15 +1556,16 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
           currency,
           dueDate: new Date(date),
           status: initialData?.status || 'pending' as const,
-          categoryId,
+          categoryId: type === 'transfer' ? 'transfer' : categoryId,
           sourceAccountId: creditAccountId || undefined,
+          targetAccountId: type === 'transfer' ? debitAccountId : undefined,
         };
         if (initialData && initialData.dueDate) {
           await updatePlannedExpense(householdId, initialData.id, plannedData);
         } else {
           await createPlannedExpense(householdId, plannedData);
         }
-      } else if (isSubscription && type === 'expense') {
+      } else if (isSubscription && (type === 'expense' || type === 'transfer')) {
         // Create or update as a recurring expense source
         const sourceData = {
           name: description,
@@ -1558,7 +1574,8 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
           flowType: (recurringType === 'bill' ? 'variable' : recurringType === 'fixed' ? 'fixed' : 'subscription') as ExpenseFlowType,
           periodDay: parseInt(periodDay),
           sourceAccountId: creditAccountId,
-          categoryId,
+          categoryId: type === 'transfer' ? 'transfer' : categoryId,
+          targetAccountId: type === 'transfer' ? debitAccountId : undefined,
           ownerId: userId || user.uid,
           status: initialData?.status || 'active' as const
         };
@@ -1575,7 +1592,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
             date: new Date(date),
             debitAccountId,
             creditAccountId,
-            categoryId,
+            categoryId: type === 'transfer' ? 'transfer' : categoryId,
             userId: userId || user.uid,
           };
           await createLedgerTransaction(householdId, txData);
@@ -1715,7 +1732,7 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
             />
           </div>
 
-          {type === 'expense' && !initialData && (
+          {(type === 'expense' || type === 'transfer') && !initialData && (
             <div className="space-y-4 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -3142,6 +3159,7 @@ const Dashboard = () => {
         { name: 'Ulaşım', type: 'expense', icon: 'car' },
         { name: 'Eğlence', type: 'expense', icon: 'film' },
         { name: 'Sağlık', type: 'expense', icon: 'heart' },
+        { name: 'Borç Ödemesi', type: 'expense', icon: 'arrow-right-left' },
       ];
 
       for (const cat of defaultCategories) {
@@ -3153,10 +3171,24 @@ const Dashboard = () => {
           createdAt: new Date()
         }, { merge: true });
       }
+
+      // Add default Cash account
+      const cashAccountId = 'nakit-hesabi';
+      await setDoc(doc(db, `households/${household.id}/accounts/${cashAccountId}`), {
+        name: 'Nakit',
+        type: 'asset',
+        branch: 'personal',
+        subType: 'cash',
+        balance: 0,
+        currency: 'TRY',
+        institution: 'Elden',
+        ownerId: user?.uid,
+        createdAt: new Date()
+      }, { merge: true });
     };
 
     initCategories();
-  }, [household, categories.length]);
+  }, [household, categories.length, user]);
 
   // Auto-fix demo accounts if institution is missing
   useEffect(() => {

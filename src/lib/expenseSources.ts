@@ -36,6 +36,7 @@ export async function createExpenseSource(householdId: string, sourceData: Omit<
         status: 'pending',
         sourceAccountId: sourceData.sourceAccountId,
         categoryId: sourceData.categoryId,
+        targetAccountId: sourceData.targetAccountId,
         ownerId: sourceData.ownerId,
       });
     }

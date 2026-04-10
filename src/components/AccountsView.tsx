@@ -104,12 +104,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             credit_card: 'Kredi Kartları',
             transport: 'Ulaşım Kartları',
             food: 'Yemek Kartları',
-            corporate_gift: 'Kurumsal Hediyeler'
+            corporate_gift: 'Kurumsal Hediyeler',
+            cash: 'Nakit Para',
+            personal_debt: 'Kişisel Borçlar',
+            personal_loan: 'Kişisel Alacaklar'
           };
           key = subTypeMap[acc.subType] || 'Diğer';
         }
       } else if (groupBy === 'branch') {
-        const branchMap: any = { banking: 'Bankacılık', crypto: 'Kripto', social_gift: 'Sosyal/Yan Haklar' };
+        const branchMap: any = { banking: 'Bankacılık', crypto: 'Kripto', social_gift: 'Sosyal/Yan Haklar', personal: 'Kişisel ve Nakit' };
         key = branchMap[acc.branch] || 'Diğer';
       }
       
@@ -155,6 +158,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       case 'banking': return <Building2 className="w-5 h-5 text-blue-500" />;
       case 'crypto': return <Bitcoin className="w-5 h-5 text-orange-500" />;
       case 'social_gift': return <Gift className="w-5 h-5 text-purple-500" />;
+      case 'personal': return <Wallet className="w-5 h-5 text-emerald-500" />;
       default: return <Wallet className="w-5 h-5 text-zinc-400" />;
     }
   };
@@ -530,7 +534,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                             account.assetDetails?.assetType === 'stock' ? 'Hisse Senedi' :
                             account.assetDetails?.assetType === 'crypto' ? 'Kripto' :
                             account.subType === 'liquidity_deposit' ? 'Likidite/Mevduat' :
-                            account.subType === 'credit_card' ? 'Kredi Kartı' : 'Diğer'
+                            account.subType === 'credit_card' ? 'Kredi Kartı' :
+                            account.subType === 'cash' ? 'Nakit' :
+                            account.subType === 'personal_debt' ? 'Kişisel Borç' :
+                            account.subType === 'personal_loan' ? 'Kişisel Alacak' : 'Diğer'
                           }
                         </p>
                       </div>

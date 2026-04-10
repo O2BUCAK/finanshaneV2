@@ -117,10 +117,21 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     </div>
                   </div>
                   <div className="p-3 bg-zinc-950 rounded-2xl border border-zinc-800">
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1">Kategori</p>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1">
+                      {source.categoryId === 'transfer' ? 'Hedef Hesap' : 'Kategori'}
+                    </p>
                     <div className="flex items-center gap-2 text-xs text-zinc-300 font-medium truncate">
-                      <Tag className="w-3 h-3 shrink-0" />
-                      {category?.name || 'Diğer'}
+                      {source.categoryId === 'transfer' ? (
+                        <>
+                          <ArrowRightLeft className="w-3 h-3 shrink-0" />
+                          {accounts.find(a => a.id === source.targetAccountId)?.name || 'Bilinmiyor'}
+                        </>
+                      ) : (
+                        <>
+                          <Tag className="w-3 h-3 shrink-0" />
+                          {category?.name || 'Diğer'}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

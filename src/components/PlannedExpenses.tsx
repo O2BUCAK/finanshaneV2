@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Calendar, Target, Trash2, Check, X, AlertCircle, TrendingDown, Tag, Wallet, Settings } from 'lucide-react';
+import { Plus, Calendar, Target, Trash2, Check, X, AlertCircle, TrendingDown, Tag, Wallet, Settings, ArrowRightLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlannedExpense, Category, Account, ExpenseSource, ExpectedExpense, ExpenseFlowType } from '../types';
 import { useCollection } from '../hooks/useFirestore';
@@ -120,8 +120,8 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
         amount: expected.amount,
         currency: expected.currency,
         date: new Date(),
-        debitAccountId: expected.categoryId, // Expense category
-        creditAccountId: expected.sourceAccountId, // Asset account
+        debitAccountId: expected.categoryId === 'transfer' ? (expected.targetAccountId || '') : expected.categoryId,
+        creditAccountId: expected.sourceAccountId,
         categoryId: expected.categoryId,
         userId: expected.ownerId || user.uid,
       };
@@ -149,6 +149,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
           status: 'pending',
           sourceAccountId: source.sourceAccountId,
           categoryId: source.categoryId,
+          targetAccountId: source.targetAccountId,
           ownerId: source.ownerId,
         });
       }
@@ -299,8 +300,19 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: category?.color || 'var(--muted-foreground)' }} />
-                              <span className="text-sm font-medium text-muted-foreground">{category?.name || 'Kategorisiz'}</span>
+                              {expense.categoryId === 'transfer' ? (
+                                <>
+                                  <ArrowRightLeft className="w-4 h-4 text-muted-foreground" />
+                                  <span className="text-sm font-medium text-muted-foreground">
+                                    {accounts.find(a => a.id === expense.sourceAccountId)?.name} → {accounts.find(a => a.id === expense.targetAccountId)?.name}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: category?.color || 'var(--muted-foreground)' }} />
+                                  <span className="text-sm font-medium text-muted-foreground">{category?.name || 'Kategorisiz'}</span>
+                                </>
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">

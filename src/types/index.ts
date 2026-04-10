@@ -1,11 +1,12 @@
 export type AccountType = 'asset' | 'liability' | 'income' | 'expense';
 
-export type AccountBranch = 'banking' | 'crypto' | 'social_gift';
+export type AccountBranch = 'banking' | 'crypto' | 'social_gift' | 'personal';
 
 export type AccountSubType = 
   | 'liquidity_deposit' | 'investment' | 'credit_debt' | 'credit_card' // Banking
   | 'global_exchange' | 'local_exchange' // Crypto
-  | 'transport' | 'food' | 'corporate_gift'; // Social/Gift
+  | 'transport' | 'food' | 'corporate_gift' // Social/Gift
+  | 'cash' | 'personal_debt' | 'personal_loan'; // Personal
 
 export type IncomeFlowType = 'fixed' | 'variable' | 'spot';
 export type IncomeCalculationType = 'fixed' | 'daily_rate';
@@ -56,6 +57,7 @@ export interface ExpenseSource {
   currency: string;
   sourceAccountId: string;
   categoryId: string;
+  targetAccountId?: string; // Added for recurring transfers (e.g. debt payments)
   periodDay?: number;
   isArchived?: boolean;
   status?: 'active' | 'suspended';
@@ -73,6 +75,7 @@ export interface ExpectedExpense {
   status: 'pending' | 'paid' | 'cancelled';
   sourceAccountId: string;
   categoryId: string;
+  targetAccountId?: string; // Added for recurring transfers
   transactionId?: string;
   createdAt: Date;
 }
@@ -87,6 +90,7 @@ export interface PlannedExpense {
   status: 'pending' | 'paid';
   categoryId: string;
   sourceAccountId?: string;
+  targetAccountId?: string; // Added for planned transfers
   createdAt: Date;
 }
 
