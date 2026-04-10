@@ -21,8 +21,11 @@ export async function createLedgerTransaction(
       const debitAccount = await localDB.accounts.get(txData.debitAccountId);
       const creditAccount = await localDB.accounts.get(txData.creditAccountId);
       
-      if (!debitAccount || !creditAccount) {
-        throw new Error('Hesap bulunamadı');
+      if (!debitAccount) {
+        throw new Error(`Hesap bulunamadı (Borç): ${txData.debitAccountId}`);
+      }
+      if (!creditAccount) {
+        throw new Error(`Hesap bulunamadı (Alacak): ${txData.creditAccountId}`);
       }
       
       await localDB.transactions.add(newTx);
@@ -70,8 +73,11 @@ export async function createInstallmentTransactions(
       const debitAccount = await localDB.accounts.get(txData.debitAccountId);
       const creditAccount = await localDB.accounts.get(txData.creditAccountId);
       
-      if (!debitAccount || !creditAccount) {
-        throw new Error('Hesap bulunamadı');
+      if (!debitAccount) {
+        throw new Error(`Hesap bulunamadı (Borç): ${txData.debitAccountId}`);
+      }
+      if (!creditAccount) {
+        throw new Error(`Hesap bulunamadı (Alacak): ${txData.creditAccountId}`);
       }
 
       const parentId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `ptx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;

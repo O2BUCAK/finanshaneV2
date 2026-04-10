@@ -1527,6 +1527,12 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
     setLoading(true);
 
     try {
+      if (!debitAccountId || !creditAccountId) {
+        alert('Lütfen hesap ve kategori seçimlerini yapınız.');
+        setLoading(false);
+        return;
+      }
+
       if (isPlanned && type === 'expense') {
         const plannedData = {
           title: description,
@@ -3207,15 +3213,25 @@ const Dashboard = () => {
     if (!household || !user) return;
     
     try {
-      // 1. Create a transaction
+      // 1. Find the target account and income category
+      const targetAccount = accounts.find(a => a.id === expected.targetAccountId);
+      if (!targetAccount) {
+        showNotification('Hedef hesap bulunamadı. Lütfen gelir kaynağını kontrol edin.', 'error');
+        return;
+      }
+
+      const incomeCategory = categories.find(c => c.type === 'income') || categories[0];
+      const creditAccountId = incomeCategory?.id || 'maas';
+
+      // 2. Create a transaction
       const txData = {
         description: `${expected.sourceName} (Gerçekleşen)`,
         amount: customAmount || expected.amount,
         currency: expected.currency,
         date: new Date(),
         debitAccountId: expected.targetAccountId,
-        creditAccountId: 'maas', // Default to salary category for now, or find the right one
-        categoryId: 'maas',
+        creditAccountId: creditAccountId,
+        categoryId: creditAccountId,
         userId: user.uid,
       };
 
