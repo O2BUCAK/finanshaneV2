@@ -121,6 +121,8 @@ export interface Household {
     displayName: string;
     email: string;
   }>;
+  isPublic?: boolean;
+  shareToken?: string;
   createdAt: Date;
 }
 

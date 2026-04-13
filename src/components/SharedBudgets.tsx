@@ -440,17 +440,30 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
                     >
                       <Copy className="w-3 h-3" />
                     </button>
-                    {navigator.share && (
+                    {navigator.share ? (
                       <button 
                         onClick={() => {
+                          const shareUrl = `${window.location.origin}${window.location.pathname}?group=${selectedBudget.joinCode}`;
                           navigator.share({
-                            title: `${selectedBudget.name} - Katılım Kodu`,
-                            text: `${selectedBudget.name} etkinliğine katılmak için kodum: ${selectedBudget.joinCode}`,
-                            url: window.location.href
+                            title: `${selectedBudget.name} - Paylaşılan Grup`,
+                            text: `${selectedBudget.name} etkinliğinin detaylarını görmek için bu bağlantıyı kullanabilirsiniz.`,
+                            url: shareUrl
                           }).catch(console.error);
                         }}
                         className="p-1 hover:bg-zinc-800 rounded text-zinc-300 hover:text-white transition-colors"
                         title="Paylaş"
+                      >
+                        <Share2 className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => {
+                          const shareUrl = `${window.location.origin}${window.location.pathname}?group=${selectedBudget.joinCode}`;
+                          navigator.clipboard.writeText(shareUrl);
+                          notify("Paylaşım linki kopyalandı!", 'success');
+                        }}
+                        className="p-1 hover:bg-zinc-800 rounded text-zinc-300 hover:text-white transition-colors"
+                        title="Linki Kopyala"
                       >
                         <Share2 className="w-3 h-3" />
                       </button>
