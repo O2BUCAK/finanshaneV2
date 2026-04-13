@@ -3834,59 +3834,6 @@ const Dashboard = () => {
                     showNotification={showNotification}
                   />
                 )}
-
-                {household && user && household.ownerId === user.uid && (
-                  <div className="mt-8 pt-8 border-t border-zinc-800">
-                    <h4 className="text-sm font-bold text-zinc-300 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <Share2 className="w-4 h-4 text-emerald-500" /> Hane Paylaşımı
-                    </h4>
-                    <div className="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
-                      <div>
-                        <h5 className="font-bold text-sm">Genel Paylaşım</h5>
-                        <p className="text-xs text-zinc-400">Bu haneyi bir link aracılığıyla salt okunur olarak paylaşın.</p>
-                      </div>
-                      <button 
-                        onClick={async () => {
-                          const isPublic = !household.isPublic;
-                          const shareToken = isPublic ? (household.shareToken || Math.random().toString(36).substring(2, 15)) : (household.shareToken || '');
-                          try {
-                            await updateDoc(doc(db, 'households', household.id), { isPublic, shareToken });
-                            await localDB.households.update(household.id, { isPublic, shareToken });
-                            showNotification(isPublic ? 'Hane paylaşıma açıldı.' : 'Hane paylaşıma kapatıldı.', 'success');
-                          } catch (err) {
-                            console.error('Error toggling public share:', err);
-                            showNotification('Bir hata oluştu.', 'error');
-                          }
-                        }}
-                        className={`w-12 h-6 rounded-full transition-colors relative ${household.isPublic ? 'bg-emerald-500' : 'bg-zinc-800'}`}
-                      >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${household.isPublic ? 'left-7' : 'left-1'}`} />
-                      </button>
-                    </div>
-                    {household.isPublic && (
-                      <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
-                        <p className="text-xs text-zinc-400 mb-2">Paylaşım Linki:</p>
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="text" 
-                            readOnly 
-                            value={`${window.location.origin}${window.location.pathname}?share=${household.shareToken}`}
-                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-zinc-300 focus:outline-none"
-                          />
-                          <button 
-                            onClick={() => {
-                              navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?share=${household.shareToken}`);
-                              showNotification('Link kopyalandı!', 'success');
-                            }}
-                            className="p-2 bg-zinc-900 hover:bg-zinc-800 rounded-xl text-emerald-500"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl">
@@ -4022,31 +3969,21 @@ const Dashboard = () => {
 };
 
 import { PublicSharedBudgetView } from './components/PublicSharedBudgetView';
-import { PublicHouseholdView } from './components/PublicHouseholdView';
 
 const AppContent = () => {
   const { user, household, loading } = useAuth();
   const [sharedGroupCode, setSharedGroupCode] = useState<string | null>(null);
-  const [shareToken, setShareToken] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const group = params.get('group');
-    const share = params.get('share');
     if (group) {
       setSharedGroupCode(group);
-    }
-    if (share) {
-      setShareToken(share);
     }
   }, []);
 
   if (sharedGroupCode) {
     return <PublicSharedBudgetView joinCode={sharedGroupCode} />;
-  }
-
-  if (shareToken) {
-    return <PublicHouseholdView shareToken={shareToken} />;
   }
 
   if (loading) {

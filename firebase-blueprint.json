@@ -28,8 +28,6 @@
         "currency": { "type": "string", "description": "Default currency (e.g., TRY)." },
         "joinCode": { "type": "string", "description": "Code to join the household." },
         "members": { "type": "object", "description": "Map of userIds to roles/metadata." },
-        "isPublic": { "type": "boolean", "description": "Whether the household is publicly viewable via link." },
-        "shareToken": { "type": "string", "description": "Unique token for public sharing." },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "ownerId", "members", "joinCode", "createdAt"]

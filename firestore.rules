@@ -68,11 +68,6 @@ service cloud.firestore {
               request.auth.uid in get(/databases/$(database)/documents/households/$(householdId)).data.members.keys());
     }
 
-    function isPublicHousehold(householdId) {
-      return exists(/databases/$(database)/documents/households/$(householdId)) &&
-             get(/databases/$(database)/documents/households/$(householdId)).data.isPublic == true;
-    }
-
     function hasRequiredFields(fields) {
       return request.resource.data.keys().hasAll(fields);
     }
@@ -151,7 +146,7 @@ service cloud.firestore {
 
     // Households
     match /households/{householdId} {
-      allow read: if isAuthenticated() || resource.data.isPublic == true;
+      allow read: if isAuthenticated();
       
       allow create: if isAuthenticated() && isValidHousehold(request.resource.data) && 
                       request.resource.data.ownerId == request.auth.uid &&
@@ -180,7 +175,7 @@ service cloud.firestore {
                  (!('minimumPayment' in data) || data.minimumPayment is number);
         }
 
-        allow read: if isMemberOfHousehold(householdId) || isPublicHousehold(householdId);
+        allow read: if isMemberOfHousehold(householdId);
         allow create: if isMemberOfHousehold(householdId) && isValidAccount(request.resource.data) && isRecent('createdAt');
         allow update: if isMemberOfHousehold(householdId) && isValidAccount(request.resource.data) && 
                         request.resource.data.createdAt == resource.data.createdAt;
@@ -188,7 +183,7 @@ service cloud.firestore {
       }
 
       match /transactions/{transactionId} {
-        allow read: if isMemberOfHousehold(householdId) || isPublicHousehold(householdId);
+        allow read: if isMemberOfHousehold(householdId);
         allow create, update: if isMemberOfHousehold(householdId) && 
                                 hasRequiredFields(['description', 'amount', 'currency', 'date', 'debitAccountId', 'creditAccountId', 'categoryId', 'userId', 'createdAt', 'updatedAt']) &&
                                 validString('description', 1, 200);
@@ -196,8 +191,7 @@ service cloud.firestore {
       }
 
       match /{allSubcollections=**} {
-        allow read: if isMemberOfHousehold(householdId) || isPublicHousehold(householdId);
-        allow write: if isMemberOfHousehold(householdId);
+        allow read, write: if isMemberOfHousehold(householdId);
       }
     }
 
@@ -221,10 +215,12 @@ service cloud.firestore {
 
     // Collection Group Rules for Shared Budgets
     match /{path=**}/sharedBudgets/{budgetId} {
-      allow read: if (isAuthenticated() && isMemberOfHousehold(path.split('/')[1])) || 
-                     (request.query.limit <= 1 && request.query.filters.joinCode == resource.data.joinCode);
+      // Allow single document fetch if it has a joinCode
+      allow get: if resource.data.joinCode != null;
       
-      allow list: if isAuthenticated() || (request.query.limit <= 10 && request.query.filters.joinCode != null); 
+      // Allow querying by joinCode with a limit of 1 for public access
+      allow list: if isAuthenticated() || 
+                     (request.query.limit <= 1 && 'joinCode' in request.query.filters);
     }
 
     // Global Categories

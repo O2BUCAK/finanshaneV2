@@ -15,22 +15,29 @@ export const PublicSharedBudgetView: React.FC<PublicSharedBudgetViewProps> = ({ 
 
   useEffect(() => {
     const fetchBudget = async () => {
+      const cleanCode = joinCode.trim().toUpperCase();
+      if (!cleanCode) {
+        setError('Geçersiz katılım kodu.');
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
         const q = query(
           collectionGroup(db, 'sharedBudgets'), 
-          where('joinCode', '==', joinCode.toUpperCase()),
+          where('joinCode', '==', cleanCode),
           limit(1)
         );
         const snap = await getDocs(q);
         if (snap.empty) {
-          setError('Grup bulunamadı veya erişim izniniz yok.');
+          setError('Grup bulunamadı veya erişim izniniz yok. Lütfen kodun doğruluğunu kontrol edin.');
         } else {
           setBudget({ ...snap.docs[0].data(), id: snap.docs[0].id } as SharedBudget);
         }
       } catch (err) {
         console.error('Error fetching public budget:', err);
-        setError('Grup yüklenirken bir hata oluştu.');
+        setError('Grup yüklenirken bir güvenlik veya bağlantı hatası oluştu.');
       } finally {
         setLoading(false);
       }
