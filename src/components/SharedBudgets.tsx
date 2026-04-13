@@ -14,6 +14,7 @@ import {
   where, 
   getDocs, 
   doc, 
+  setDoc,
   updateDoc, 
   arrayUnion 
 } from '../lib/firebase';
@@ -81,19 +82,19 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
 
   // Update selected budget when data changes
   useEffect(() => {
-    if (selectedBudget && budgets && budgets.length > 0) {
+    if (budgets && budgets.length > 0 && householdId && selectedBudget) {
       const updated = budgets.find(b => b.id === selectedBudget.id);
       if (updated) {
         setSelectedBudget(updated);
         
         // Generate missing join code for older budgets
-        if (!updated.joinCode && householdId) {
+        if (!updated.joinCode) {
           const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
           updateSharedBudget(householdId, updated.id, { joinCode });
         }
       }
     }
-  }, [budgets, householdId]);
+  }, [budgets, householdId, selectedBudget?.id]);
 
   // Modals state
   const [isNewBudgetModalOpen, setIsNewBudgetModalOpen] = useState(false);
@@ -151,9 +152,9 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
 
       // Add to user profile
       const userRef = doc(db, 'users', profile.id);
-      await updateDoc(userRef, {
+      await setDoc(userRef, {
         joinedBudgetIds: arrayUnion(budgetId)
-      });
+      }, { merge: true });
 
       // Add as participant if not already there
       if (!budgetData.participants.find(p => p.id === profile.id)) {
@@ -442,7 +443,10 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
                     </button>
                     {navigator.share ? (
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
+                          // Ensure synced to cloud before sharing
+                          await updateSharedBudget(householdId!, selectedBudget.id, { joinCode: selectedBudget.joinCode });
+                          
                           const shareUrl = `${window.location.origin}${window.location.pathname}?group=${selectedBudget.joinCode}`;
                           navigator.share({
                             title: `${selectedBudget.name} - Paylaşılan Grup`,
@@ -457,7 +461,10 @@ export const SharedBudgets: React.FC<SharedBudgetsProps> = ({ householdId, showN
                       </button>
                     ) : (
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
+                          // Ensure synced to cloud before sharing
+                          await updateSharedBudget(householdId!, selectedBudget.id, { joinCode: selectedBudget.joinCode });
+                          
                           const shareUrl = `${window.location.origin}${window.location.pathname}?group=${selectedBudget.joinCode}`;
                           navigator.clipboard.writeText(shareUrl);
                           notify("Paylaşım linki kopyalandı!", 'success');

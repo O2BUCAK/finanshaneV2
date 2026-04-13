@@ -146,7 +146,10 @@ service cloud.firestore {
 
     // Households
     match /households/{householdId} {
-      allow read: if isAuthenticated();
+      allow read: if isMemberOfHousehold(householdId);
+      
+      allow list: if isAuthenticated() && 
+                     (request.query.limit <= 1 && 'joinCode' in request.query.filters);
       
       allow create: if isAuthenticated() && isValidHousehold(request.resource.data) && 
                       request.resource.data.ownerId == request.auth.uid &&

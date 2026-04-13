@@ -181,7 +181,7 @@
         "status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"], "description": "Status of the request." },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "householdId", "displayName", "email", "status", "createdAt"]
+      "required": ["userId", "householdId", "householdName", "displayName", "email", "status", "createdAt"]
     }
   },
   "firestore": {

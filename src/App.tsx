@@ -2364,7 +2364,7 @@ const JoinOrCreateHousehold = () => {
           await localDB.users.update(user.uid, { activeHouseholdId: householdId });
           
           // Update Firestore profile too
-          await updateDoc(doc(db, 'users', user.uid), { activeHouseholdId: householdId });
+          await setDoc(doc(db, 'users', user.uid), { activeHouseholdId: householdId }, { merge: true });
         }
       } catch (err) {
         console.error('Check existing error:', err);
@@ -2550,7 +2550,7 @@ const JoinOrCreateHousehold = () => {
             <button 
               onClick={async () => {
                 try {
-                  await updateDoc(doc(db, 'joinRequests', pendingRequest.id), { status: 'cancelled' });
+                  await setDoc(doc(db, 'joinRequests', pendingRequest.id), { status: 'cancelled' }, { merge: true });
                   setPendingRequest(null);
                 } catch (err) {
                   console.error('Cancel request error:', err);
@@ -2787,10 +2787,10 @@ const Dashboard = () => {
   const handleAcceptKVKK = async () => {
     if (!user) return;
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      await setDoc(doc(db, 'users', user.uid), {
         kvkkAccepted: true,
         kvkkAcceptedAt: new Date()
-      });
+      }, { merge: true });
       setIsKVKKModalOpen(false);
     } catch (error) {
       console.error('KVKK accept error:', error);
@@ -2869,7 +2869,7 @@ const Dashboard = () => {
       };
 
       // Update Firestore
-      await updateDoc(doc(db, 'households', household.id), updates);
+      await setDoc(doc(db, 'households', household.id), updates, { merge: true });
       
       // Update LocalDB
       await localDB.households.update(household.id, updates);
@@ -2914,7 +2914,7 @@ const Dashboard = () => {
         
         if (Object.keys(updates).length > 0) {
           const householdRef = doc(db, 'households', household.id);
-          await updateDoc(householdRef, updates);
+          await setDoc(householdRef, updates, { merge: true });
           await localDB.households.update(household.id, updates);
         }
       }

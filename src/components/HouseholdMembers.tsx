@@ -71,7 +71,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       
       // Update Firestore
-      await updateDoc(doc(db, 'households', household.id), { joinCode: newCode });
+      await setDoc(doc(db, 'households', household.id), { joinCode: newCode }, { merge: true });
       
       // Update LocalDB
       await localDB.households.update(household.id, { joinCode: newCode });
@@ -113,10 +113,10 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
       }
 
       // Update Household
-      await updateDoc(doc(db, 'households', household.id), { members: updatedMembers });
+      await setDoc(doc(db, 'households', household.id), { members: updatedMembers }, { merge: true });
       
       // Update Join Request
-      await updateDoc(doc(db, 'joinRequests', requestId), { status: 'approved' });
+      await setDoc(doc(db, 'joinRequests', requestId), { status: 'approved' }, { merge: true });
       
       // Sync local
       await localDB.households.update(household.id, { members: updatedMembers });
@@ -136,7 +136,7 @@ export const HouseholdMembers: React.FC<HouseholdMembersProps> = ({ household, c
     if (!isOwner || loading) return;
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'joinRequests', requestId), { status: 'rejected' });
+      await setDoc(doc(db, 'joinRequests', requestId), { status: 'rejected' }, { merge: true });
       if (showNotification) showNotification('İstek reddedildi.', 'info');
     } catch (error) {
       console.error('Reject error:', error);
