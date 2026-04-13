@@ -36,11 +36,15 @@ export const PublicSharedBudgetView: React.FC<PublicSharedBudgetViewProps> = ({ 
           const data = snap.docs[0].data();
           // Convert Firestore timestamps to Dates
           const processedData = { ...data };
-          for (const key in processedData) {
-            if (processedData[key] && typeof processedData[key].toDate === 'function') {
-              processedData[key] = processedData[key].toDate();
-            }
+          if (processedData.expenses) {
+            processedData.expenses = processedData.expenses.map((exp: any) => ({
+              ...exp,
+              date: exp.date?.toDate ? exp.date.toDate() : exp.date
+            }));
           }
+          if (processedData.createdAt?.toDate) processedData.createdAt = processedData.createdAt.toDate();
+          if (processedData.date?.toDate) processedData.date = processedData.date.toDate();
+          
           setBudget({ ...processedData, id: snap.docs[0].id } as SharedBudget);
         }
       } catch (err) {
@@ -189,18 +193,64 @@ export const PublicSharedBudgetView: React.FC<PublicSharedBudgetViewProps> = ({ 
             <h3 className="text-xl font-bold flex items-center gap-2 mb-6">
               <Receipt className="w-5 h-5 text-blue-500" /> Harcamalar
             </h3>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {budget.expenses.map(exp => {
                 const payer = budget.participants.find(p => p.id === exp.paidBy);
+                
+                // Calculate shares for this specific expense
+                const sharingParticipants = exp.participantIds && exp.participantIds.length > 0
+                  ? budget.participants.filter(p => exp.participantIds!.includes(p.id))
+                  : budget.participants;
+
+                const totalSharingWeight = sharingParticipants.reduce((sum, p) => sum + p.weight, 0);
+                const shares: { name: string; amount: number }[] = [];
+
+                if (exp.splitType === 'equal' || exp.splitType === 'by_weight') {
+                  sharingParticipants.forEach(p => {
+                    const share = (exp.amount / totalSharingWeight) * p.weight;
+                    shares.push({ name: p.name, amount: share });
+                  });
+                } else if (exp.splitType === 'exact' && exp.exactAmounts) {
+                  sharingParticipants.forEach(p => {
+                    shares.push({ name: p.name, amount: exp.exactAmounts![p.id] || 0 });
+                  });
+                }
+
                 return (
-                  <div key={exp.id} className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 flex justify-between items-center">
-                    <div>
-                      <p className="font-bold">{exp.description}</p>
-                      <p className="text-xs text-zinc-400">
-                        <span className="text-emerald-500 font-medium">{payer?.name}</span> ödedi
-                      </p>
+                  <div key={exp.id} className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="font-bold">{exp.description}</p>
+                        <p className="text-xs text-zinc-400">
+                          <span className="text-emerald-500 font-medium">{payer?.name}</span> ödedi
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-bold">{exp.amount.toLocaleString('tr-TR')} ₺</span>
+                        <div className="flex items-center gap-1 mt-1 justify-end">
+                          <Clock className="w-3 h-3 text-zinc-500" />
+                          <span className="text-[10px] text-zinc-500">{new Date(exp.date).toLocaleDateString('tr-TR')}</span>
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-lg font-bold">{exp.amount.toLocaleString('tr-TR')} ₺</span>
+
+                    {/* Split Details */}
+                    <div className="pt-3 border-t border-zinc-900">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Bölüşüm Özeti</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded font-medium">
+                          {exp.splitType === 'equal' ? 'Eşit' : exp.splitType === 'by_weight' ? 'Ağırlıklı' : 'Tam Tutar'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {shares.map((s, idx) => (
+                          <div key={idx} className="flex justify-between items-center p-2 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
+                            <span className="text-[10px] text-zinc-400 truncate mr-2">{s.name}</span>
+                            <span className="text-[10px] font-bold text-zinc-200">{s.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 );
               })}
