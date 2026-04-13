@@ -148,8 +148,7 @@ service cloud.firestore {
     match /households/{householdId} {
       allow read: if isMemberOfHousehold(householdId);
       
-      allow list: if isAuthenticated() && 
-                     (request.query.limit <= 1 && 'joinCode' in request.query.filters);
+      allow list: if isAuthenticated() && request.query.limit <= 1;
       
       allow create: if isAuthenticated() && isValidHousehold(request.resource.data) && 
                       request.resource.data.ownerId == request.auth.uid &&
@@ -218,12 +217,9 @@ service cloud.firestore {
 
     // Collection Group Rules for Shared Budgets
     match /{path=**}/sharedBudgets/{budgetId} {
-      // Allow single document fetch if it has a joinCode
-      allow get: if resource.data.joinCode != null;
-      
-      // Allow querying by joinCode with a limit of 1 for public access
-      allow list: if isAuthenticated() || 
-                     (request.query.limit <= 1 && 'joinCode' in request.query.filters);
+      // Allow reading a single document if it has a joinCode (public access)
+      allow read: if (resource != null && resource.data.joinCode != null) && 
+                     (isAuthenticated() || request.query.limit <= 1);
     }
 
     // Global Categories
