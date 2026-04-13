@@ -261,37 +261,55 @@ export const PublicSharedBudgetView: React.FC<PublicSharedBudgetViewProps> = ({ 
           </div>
         </div>
 
-        {/* Settlements */}
+        {/* Settlements / Bölüşüm Özeti */}
         {calculations && budget.expenses.length > 0 && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <h3 className="text-xl font-bold flex items-center gap-2 mb-6">
-              <Calculator className="w-5 h-5 text-purple-500" /> Hesaplaşma
+              <Calculator className="w-5 h-5 text-purple-500" /> Bölüşüm Özeti (Hesaplaşma)
             </h3>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-3">
-                {budget.participants.map(p => {
-                  const bal = calculations.balances[p.id];
-                  return (
-                    <div key={p.id} className="flex justify-between items-center p-3 bg-zinc-950 rounded-2xl border border-zinc-800">
-                      <span className="font-medium">{p.name}</span>
-                      <span className={`font-bold ${bal.net > 0 ? 'text-emerald-500' : bal.net < 0 ? 'text-rose-500' : 'text-zinc-300'}`}>
-                        {bal.net > 0 ? '+' : ''}{bal.net.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺
-                      </span>
-                    </div>
-                  );
-                })}
+              <div>
+                <h4 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-4">Genel Durum</h4>
+                <div className="space-y-3">
+                  {budget.participants.map(p => {
+                    const bal = calculations.balances[p.id];
+                    return (
+                      <div key={p.id} className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-zinc-100">{p.name}</p>
+                          <p className="text-[10px] text-zinc-500 mt-1">
+                            Ödediği: {bal.paid.toLocaleString('tr-TR')} ₺ | Payı: {bal.owed.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺
+                          </p>
+                        </div>
+                        <div className={`text-right font-bold ${bal.net > 0.01 ? 'text-emerald-500' : bal.net < -0.01 ? 'text-rose-500' : 'text-zinc-400'}`}>
+                          {bal.net > 0.01 ? '+' : ''}{bal.net.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="space-y-3">
-                {calculations.settlements.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between p-4 bg-zinc-950 rounded-2xl border border-zinc-800">
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-rose-500">{budget.participants.find(p => p.id === s.from)?.name}</span>
-                      <ArrowRight className="w-4 h-4 text-zinc-300" />
-                      <span className="font-bold text-emerald-500">{budget.participants.find(p => p.id === s.to)?.name}</span>
+
+              <div>
+                <h4 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-4">Transferler (Kim Kime Ödeyecek?)</h4>
+                <div className="space-y-3">
+                  {calculations.settlements.length > 0 ? calculations.settlements.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between p-4 bg-zinc-950 rounded-2xl border border-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-rose-500">{budget.participants.find(p => p.id === s.from)?.name}</span>
+                        <ArrowRight className="w-4 h-4 text-zinc-300" />
+                        <span className="font-bold text-emerald-500">{budget.participants.find(p => p.id === s.to)?.name}</span>
+                      </div>
+                      <span className="font-bold text-white">{s.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺</span>
                     </div>
-                    <span className="font-bold">{s.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺</span>
-                  </div>
-                ))}
+                  )) : (
+                    <div className="p-8 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl text-center">
+                      <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                      <p className="text-sm text-emerald-500 font-medium">Tüm hesaplar dengede!</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
