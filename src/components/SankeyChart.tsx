@@ -25,13 +25,13 @@ interface SankeyChartProps {
   formatCurrency: (val: number) => string;
 }
 
-export const SankeyChart: React.FC<SankeyChartProps> = ({ data, width = 800, height = 500, formatCurrency }) => {
+export const SankeyChart: React.FC<SankeyChartProps> = ({ data, width = 900, height = 400, formatCurrency }) => {
   const { nodes, links } = useMemo(() => {
     const sankeyGenerator = sankey<SankeyNode, SankeyLink>()
       .nodeId(d => d.id)
       .nodeWidth(30)
-      .nodePadding(30)
-      .extent([[20, 80], [width - 150, height - 40]])
+      .nodePadding(35)
+      .extent([[180, 70], [width - 180, height - 30]])
       .nodeAlign(sankeyJustify);
 
     // Deep copy data because d3-sankey mutates it
@@ -82,7 +82,7 @@ export const SankeyChart: React.FC<SankeyChartProps> = ({ data, width = 800, hei
               className="hover:stroke-opacity-80 transition-all duration-300 cursor-pointer"
               style={{ strokeOpacity: 0.5 }}
             >
-              <title>{`${(link.source as any).name} → ${(link.target as any).name}\n${formatCurrency(link.value)}`}</title>
+              <title>{`${(link.source as any).name.replace(/\u200B/g, '')} → ${(link.target as any).name.replace(/\u200B/g, '')}\n${formatCurrency(link.value)}`}</title>
             </path>
           );
         })}
@@ -90,10 +90,9 @@ export const SankeyChart: React.FC<SankeyChartProps> = ({ data, width = 800, hei
 
       <g>
         {nodes.map((node: any, i) => {
-          const isIncome = node.id.startsWith('income_');
           const isTotal = node.id === 'total_income';
-          const isExpense = node.id.startsWith('expense_');
-          const isRemaining = node.id === 'remaining';
+          const isLeft = node.x0 < width / 3 && !isTotal;
+          const isRight = !isLeft && !isTotal;
           
           let color = node.color || '#3b82f6';
           
@@ -108,27 +107,55 @@ export const SankeyChart: React.FC<SankeyChartProps> = ({ data, width = 800, hei
                 rx={4}
                 className="hover:opacity-80 transition-opacity cursor-pointer"
               >
-                <title>{`${node.name}\n${formatCurrency(node.value)}`}</title>
+                <title>{`${node.name.replace(/\u200B/g, '')}\n${formatCurrency(node.value)}`}</title>
               </rect>
               
               <foreignObject 
-                x={isTotal ? node.x0 - 75 + (node.x1 - node.x0) / 2 : (node.x0 < width / 2 ? node.x0 + 10 : node.x1 - 160)} 
-                y={isTotal ? node.y0 - 60 : node.y0 + (node.y1 - node.y0) / 2 - 25} 
-                width={150} 
+                x={isTotal ? node.x0 - 80 + (node.x1 - node.x0) / 2 : (isLeft ? node.x0 - 175 : node.x1 + 10)} 
+                y={isTotal ? node.y0 - 62 : node.y0 + (node.y1 - node.y0) / 2 - 25} 
+                width={isTotal ? 160 : 165} 
                 height={50}
                 className="overflow-visible pointer-events-none"
               >
-                <div className={`flex flex-col justify-center h-full ${isTotal ? 'items-center' : (node.x0 < width / 2 ? 'items-start' : 'items-end')}`}>
-                  <div className="bg-card/90 backdrop-blur-sm border border-border px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
-                    {node.x0 < width / 2 && !isTotal && (
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }}></div>
+                <div className={`flex flex-col justify-center h-full ${isTotal ? 'items-center' : (isLeft ? 'items-end' : 'items-start')}`}>
+                  <div className={`backdrop-blur-sm px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-2 border ${
+                    isTotal 
+                      ? 'bg-primary/10 border-primary/20 flex-col items-center gap-0.5' 
+                      : 'bg-card/90 border-border'
+                  }`}>
+                    {isLeft && (
+                      <>
+                        <div className="flex flex-col items-end text-right">
+                          <span className="text-xs font-semibold text-muted-foreground truncate max-w-[125px]">
+                            {node.name.replace(/\u200B/g, '')}
+                          </span>
+                          <span className="text-sm font-bold text-foreground">
+                            {formatCurrency(node.displayValue !== undefined ? node.displayValue : node.value)}
+                          </span>
+                        </div>
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      </>
                     )}
-                    <div className="flex flex-col items-start">
-                      <span className="text-xs font-medium text-muted-foreground truncate max-w-[120px]">{node.name}</span>
-                      <span className="text-sm font-bold text-foreground">{formatCurrency(node.displayValue !== undefined ? node.displayValue : node.value)}</span>
-                    </div>
-                    {node.x0 >= width / 2 && !isTotal && (
-                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }}></div>
+                    
+                    {isTotal && (
+                      <>
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-primary">{node.name.replace(/\u200B/g, '')}</span>
+                        <span className="text-sm font-black text-foreground">{formatCurrency(node.displayValue !== undefined ? node.displayValue : node.value)}</span>
+                      </>
+                    )}
+
+                    {isRight && (
+                      <>
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                        <div className="flex flex-col items-start text-left">
+                          <span className="text-xs font-semibold text-muted-foreground truncate max-w-[125px]">
+                            {node.name.replace(/\u200B/g, '')}
+                          </span>
+                          <span className="text-sm font-bold text-foreground">
+                            {formatCurrency(node.displayValue !== undefined ? node.displayValue : node.value)}
+                          </span>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>

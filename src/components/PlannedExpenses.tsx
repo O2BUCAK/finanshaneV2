@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Calendar, Target, Trash2, Check, X, AlertCircle, TrendingDown, Tag, Wallet, Settings, ArrowRightLeft } from 'lucide-react';
+import { Plus, Calendar, Target, Trash2, Check, X, AlertCircle, TrendingDown, Tag, Wallet, Settings, ArrowRightLeft, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlannedExpense, Category, Account, ExpenseSource, ExpectedExpense, ExpenseFlowType } from '../types';
 import { useCollection } from '../hooks/useFirestore';
@@ -113,6 +113,19 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
   const handleApproveExpectedExpense = async (expected: ExpectedExpense) => {
     if (!householdId || !user) return;
     
+    // Engelleme: Vakti gelmeyen (gelecek tarihli) beklenen gider ödenemez
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const expectedDate = expected.expectedDate instanceof Date 
+      ? expected.expectedDate 
+      : (expected.expectedDate as any)?.seconds 
+        ? new Date((expected.expectedDate as any).seconds * 1000) 
+        : new Date(expected.expectedDate);
+
+    if (expectedDate > today) {
+      return;
+    }
+    
     try {
       // 1. Create a transaction
       const txData = {
@@ -180,72 +193,8 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Tabs */}
-      <div className="flex p-1 bg-secondary rounded-2xl w-fit">
-        <button
-          onClick={() => setActiveView('planned')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeView === 'planned' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          Planlanan Giderler
-        </button>
-        <button
-          onClick={() => setActiveView('recurring')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeView === 'recurring' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          Düzenli Ödemeler (Kira, Abonelik)
-        </button>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="corporate-card p-8">
-          <div className="flex items-center gap-3 text-muted-foreground mb-3">
-            <Target className="w-5 h-5" />
-            <span className="text-xs font-bold uppercase tracking-wider">Toplam Planlanan</span>
-          </div>
-          <div className="text-3xl font-bold text-foreground">
-            {formatWithEquivalent(totalPlanned, 'TRY')}
-          </div>
-        </div>
-        <div className="corporate-card p-8">
-          <div className="flex items-center gap-3 text-muted-foreground mb-3">
-            <Check className="w-5 h-5 text-emerald-500" />
-            <span className="text-xs font-bold uppercase tracking-wider">Ödenen</span>
-          </div>
-          <div className="text-3xl font-bold text-emerald-500">
-            {formatWithEquivalent(totalPaid, 'TRY')}
-          </div>
-        </div>
-        <div className="corporate-card p-8">
-          <div className="flex items-center gap-3 text-muted-foreground mb-3">
-            <TrendingDown className="w-5 h-5 text-destructive" />
-            <span className="text-xs font-bold uppercase tracking-wider">Kalan Ödeme</span>
-          </div>
-          <div className="text-3xl font-bold text-foreground">
-            {formatWithEquivalent(totalPlanned - totalPaid, 'TRY')}
-          </div>
-        </div>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="corporate-card p-8">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-sm font-bold text-foreground uppercase tracking-wide">Bütçe İlerlemesi</span>
-          <span className="text-sm font-bold text-primary">%{progress.toFixed(1)}</span>
-        </div>
-        <div className="w-full bg-secondary rounded-full h-3 overflow-hidden">
-          <motion.div 
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            className="bg-primary h-full rounded-full shadow-sm"
-          />
-        </div>
-      </div>
-
       {/* Expenses List */}
-      <div className="space-y-8">
-        {activeView === 'planned' ? (
-          <div className="corporate-card overflow-hidden">
+      <div className="corporate-card overflow-hidden">
             {loading ? (
               <div className="p-12 text-center text-muted-foreground font-medium">Veriler yükleniyor...</div>
             ) : plannedExpenses.length > 0 ? (
@@ -273,13 +222,21 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button 
                               onClick={() => toggleStatus(expense)}
-                              className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 border-0 ${
                                 expense.status === 'paid' 
-                                  ? 'bg-emerald-500 border-emerald-500 text-white' 
-                                  : 'border-border hover:border-primary/50'
+                                  ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white' 
+                                  : 'bg-zinc-800 text-zinc-400 hover:bg-emerald-500/20 hover:text-emerald-500'
                               }`}
                             >
-                              {expense.status === 'paid' && <Check className="w-4 h-4" />}
+                              {expense.status === 'paid' ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" /> Ödeme Yapıldı
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-3.5 h-3.5" /> Öde
+                                </>
+                              )}
                             </button>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -326,7 +283,7 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button 
                                 onClick={() => openModal(expense)}
                                 className="p-2 hover:bg-secondary rounded-xl text-muted-foreground hover:text-foreground transition-all"
@@ -348,161 +305,10 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
                 </table>
               </div>
             ) : (
-              <div className="p-20 text-center">
-                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Target className="w-8 h-8 text-muted-foreground/30" />
-                </div>
-                <p className="text-lg font-bold text-foreground mb-1">Harcama planı bulunmuyor</p>
-                <p className="text-sm text-muted-foreground font-medium">Henüz planlanmış bir harcama bulunmuyor.</p>
+              <div className="p-8 text-center bg-zinc-950/40 border border-dashed border-zinc-800 rounded-3xl m-6">
+                <p className="text-sm font-medium text-zinc-500">Henüz planlanmış tek seferlik bir gider bulunmuyor.</p>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Bekleyen Ödemeler */}
-            <div className="corporate-card overflow-hidden">
-              <div className="p-6 border-b border-border bg-secondary/10">
-                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-primary" /> Bekleyen Ödemeler
-                </h3>
-              </div>
-              {expectedExpenses.filter(ee => ee.status === 'pending').length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-border bg-secondary/30">
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Vade</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kaynak</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kategori</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Miktar</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">İşlemler</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {expectedExpenses
-                        .filter(ee => ee.status === 'pending')
-                        .sort((a, b) => new Date(a.expectedDate).getTime() - new Date(b.expectedDate).getTime())
-                        .map(ee => {
-                          const category = categories.find(c => c.id === ee.categoryId);
-                          const isOverdue = new Date(ee.expectedDate) < new Date();
-                          
-                          return (
-                            <tr key={ee.id} className="group hover:bg-secondary/50 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className={`text-sm font-bold ${isOverdue ? 'text-destructive' : 'text-foreground'}`}>
-                                  {new Date(ee.expectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
-                                </div>
-                                {isOverdue && <div className="text-[10px] font-bold text-destructive uppercase">Gecikti</div>}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-bold text-foreground">{ee.sourceName}</div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: category?.color || 'var(--muted-foreground)' }} />
-                                  <span className="text-sm font-medium text-muted-foreground">{category?.name || 'Kategorisiz'}</span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-right">
-                                <div className="text-sm font-bold text-foreground">
-                                  {formatWithEquivalent(ee.amount, ee.currency)}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button 
-                                    onClick={() => handleApproveExpectedExpense(ee)}
-                                    className="px-3 py-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg text-xs font-bold hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-1"
-                                  >
-                                    <Check className="w-3 h-3" /> Öde
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDelete(ee.id, 'expected')}
-                                    className="p-1.5 hover:bg-destructive/10 rounded-lg text-muted-foreground hover:text-destructive transition-all"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="p-12 text-center text-muted-foreground font-medium">Yaklaşan ödeme bulunmuyor.</div>
-              )}
-            </div>
-
-            {/* Ödeme Kaynakları */}
-            <div className="corporate-card overflow-hidden">
-              <div className="p-6 border-b border-border bg-secondary/10">
-                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-primary" /> Ödeme Kaynakları (Abonelikler, Kira vb.)
-                </h3>
-              </div>
-              {expenseSources.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-border bg-secondary/30">
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kaynak Adı</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Tür</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Periyot</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Miktar</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">İşlemler</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {expenseSources.map(source => {
-                        const flowOption = EXPENSE_FLOW_OPTIONS.find(o => o.id === source.flowType);
-                        return (
-                          <tr key={source.id} className="group hover:bg-secondary/50 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-bold text-foreground">{source.name}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="px-2 py-1 bg-primary/10 text-primary rounded text-[10px] font-bold uppercase">
-                                {flowOption?.label || source.flowType}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-muted-foreground">Her ayın {source.periodDay}. günü</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                              <div className="text-sm font-bold text-foreground">
-                                {formatWithEquivalent(source.amount, source.currency)}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                  onClick={() => openSourceModal(source)}
-                                  className="p-2 hover:bg-secondary rounded-xl text-muted-foreground hover:text-foreground transition-all"
-                                >
-                                  <Settings className="w-4 h-4" />
-                                </button>
-                                <button 
-                                  onClick={() => handleDelete(source.id, 'source')}
-                                  className="p-2 hover:bg-destructive/10 rounded-xl text-muted-foreground hover:text-destructive transition-all"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="p-12 text-center text-muted-foreground font-medium">Kayıtlı ödeme kaynağı bulunmuyor.</div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Delete Confirmation Modal */}

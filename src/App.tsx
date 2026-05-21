@@ -3246,6 +3246,20 @@ const Dashboard = () => {
   const handleApproveIncome = async (expected: ExpectedIncome, customAmount?: number) => {
     if (!household || !user) return;
     
+    // Engelleme: Vakti gelmeyen (gelecek tarihli) beklenen gelir tahsil edilemez
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const expectedDate = expected.expectedDate instanceof Date 
+      ? expected.expectedDate 
+      : (expected.expectedDate as any)?.seconds 
+        ? new Date((expected.expectedDate as any).seconds * 1000) 
+        : new Date(expected.expectedDate);
+
+    if (expectedDate > today) {
+      showNotification('Günü gelmeyen beklenen gelirler tahsil edilemez.', 'error');
+      return;
+    }
+    
     try {
       // 1. Find the target account and income category
       const targetAccount = accounts.find(a => a.id === expected.targetAccountId);
@@ -3578,7 +3592,7 @@ const Dashboard = () => {
               incomeSources={incomeSources}
               expectedIncomes={expectedIncomes}
               transactions={transactions}
-              accounts={accounts}
+              accounts={allAccounts}
               onAddIncome={() => {
                 setEditingIncomeSource(null);
                 setIsIncomeModalOpen(true);
@@ -3598,6 +3612,7 @@ const Dashboard = () => {
               householdId={household?.id || ''}
               plannedExpenses={plannedExpenses}
               expenseSources={expenseSources}
+              expectedExpenses={expectedExpenses}
               transactions={transactions}
               accounts={accounts}
               categories={categories}

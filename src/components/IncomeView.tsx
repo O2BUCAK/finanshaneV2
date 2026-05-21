@@ -118,94 +118,113 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
               <p className="text-zinc-500">Yakın zamanda beklenen bir gelir bulunmuyor.</p>
             </div>
           )}
-          {pendingIncomes.map(income => (
-            <div key={income.id} className="corporate-card p-8 relative group overflow-hidden">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-emerald-500" />
+          {pendingIncomes.map(income => {
+            const isFuture = (() => {
+              const today = new Date();
+              today.setHours(23, 59, 59, 999);
+              const dateObj = income.expectedDate instanceof Date 
+                ? income.expectedDate 
+                : (income.expectedDate as any)?.seconds 
+                  ? new Date((income.expectedDate as any).seconds * 1000) 
+                  : new Date(income.expectedDate);
+              return dateObj > today;
+            })();
+
+            return (
+              <div key={income.id} className="corporate-card p-8 relative group overflow-hidden">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-zinc-800 text-zinc-400 uppercase tracking-wider">
+                      {new Date(income.expectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
+                    </span>
+                    <button 
+                      onClick={() => setDeleteConfirm({
+                        id: income.id,
+                        type: 'expected',
+                        title: 'Beklenen Geliri Sil',
+                        message: `${income.sourceName} için beklenen bu geliri silmek istediğinizden emin misiniz?`
+                      })}
+                      className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold px-2 py-1 rounded bg-zinc-800 text-zinc-400 uppercase tracking-wider">
-                    {new Date(income.expectedDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
-                  </span>
-                  <button 
-                    onClick={() => setDeleteConfirm({
-                      id: income.id,
-                      type: 'expected',
-                      title: 'Beklenen Geliri Sil',
-                      message: `${income.sourceName} için beklenen bu geliri silmek istediğinizden emin misiniz?`
-                    })}
-                    className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <h3 className="font-bold text-white mb-1">{income.sourceName}</h3>
-              <p className="text-2xl font-bold text-emerald-500 mb-4">
-                {formatWithEquivalent(income.amount, income.currency || 'TRY')}
-              </p>
-              
-              <AnimatePresence mode="wait">
-                {approvingId === income.id ? (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="space-y-3"
-                  >
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Yatan Net Tutar</label>
-                      <div className="relative">
-                        <input 
-                          type="text"
-                          autoFocus
-                          value={formatAmount(customAmount)}
-                          onChange={(e) => setCustomAmount(parseAmount(cleanAmountInput(e.target.value)))}
-                          className="w-full bg-zinc-950 border border-emerald-500/50 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500">{income.currency || 'TRY'}</span>
+                <h3 className="font-bold text-white mb-1">{income.sourceName}</h3>
+                <p className="text-2xl font-bold text-emerald-500 mb-4">
+                  {formatWithEquivalent(income.amount, income.currency || 'TRY')}
+                </p>
+                
+                <AnimatePresence mode="wait">
+                  {approvingId === income.id ? (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="space-y-3"
+                    >
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Yatan Net Tutar</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            autoFocus
+                            value={formatAmount(customAmount)}
+                            onChange={(e) => setCustomAmount(parseAmount(cleanAmountInput(e.target.value)))}
+                            className="w-full bg-zinc-950 border border-emerald-500/50 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500">{income.currency || 'TRY'}</span>
+                        </div>
                       </div>
-                    </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => confirmApprove(income)}
+                          className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+                        >
+                          <Check className="w-4 h-4" /> Onayla
+                        </button>
+                        <button 
+                          onClick={() => setApprovingId(null)}
+                          className="p-2 bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ) : (
                     <div className="flex gap-2">
-                      <button 
-                        onClick={() => confirmApprove(income)}
-                        className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+                      <motion.button 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        disabled={isFuture}
+                        onClick={() => !isFuture && startApprove(income)}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                          isFuture 
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50' 
+                            : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white'
+                        }`}
+                        title={isFuture ? 'Tarihi gelmediği için henüz tahsil edilemez.' : undefined}
                       >
-                        <Check className="w-4 h-4" /> Onayla
-                      </button>
-                      <button 
-                        onClick={() => setApprovingId(null)}
-                        className="p-2 bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-all"
+                        Tahsil Edildi
+                      </motion.button>
+                      <motion.button 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        onClick={() => onCancelIncome(income)}
+                        className="p-2 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all"
+                        title="Tahsil Edilemedi (İptal Et)"
                       >
                         <X className="w-4 h-4" />
-                      </button>
+                      </motion.button>
                     </div>
-                  </motion.div>
-                ) : (
-                  <div className="flex gap-2">
-                    <motion.button 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      onClick={() => startApprove(income)}
-                      className="flex-1 py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-xl text-xs font-bold transition-all"
-                    >
-                      Tahsil Edildi
-                    </motion.button>
-                    <motion.button 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      onClick={() => onCancelIncome(income)}
-                      className="p-2 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all"
-                      title="Tahsil Edilemedi (İptal Et)"
-                    >
-                      <X className="w-4 h-4" />
-                    </motion.button>
-                  </div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </div>
       </div>
 

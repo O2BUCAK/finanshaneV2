@@ -123,7 +123,7 @@ export const Reports: React.FC<ReportsProps> = ({
         
         if (ei.status === 'pending' && isThisMonth) {
           const amountTRY = convertToTRY(ei.amount, ei.currency || 'TRY');
-          const name = `(Tahmini) ${ei.sourceName}`;
+          const name = `${ei.sourceName}\u200B`;
           incomeBySource[name] = (incomeBySource[name] || 0) + amountTRY;
           totalIncome += amountTRY;
           pendingSourceIds.add(ei.sourceId);
@@ -141,7 +141,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
           if (!alreadyRealized) {
             const amountTRY = convertToTRY(is.amount, is.currency || 'TRY');
-            const name = `(Tahmini) ${is.name}`;
+            const name = `${is.name}\u200B`;
             incomeBySource[name] = (incomeBySource[name] || 0) + amountTRY;
             totalIncome += amountTRY;
           }
@@ -174,7 +174,7 @@ export const Reports: React.FC<ReportsProps> = ({
         if (pe.status === 'pending' && isThisMonth) {
           const amountTRY = convertToTRY(pe.amount, pe.currency || 'TRY');
           const category = categories.find(c => c.id === pe.categoryId);
-          const name = `(Tahmini) ${category?.name || 'Diğer'}`;
+          const name = `${category?.name || 'Diğer'}\u200B`;
           expenseByCategory[name] = (expenseByCategory[name] || 0) + amountTRY;
           totalExpense += amountTRY;
         }
@@ -187,7 +187,7 @@ export const Reports: React.FC<ReportsProps> = ({
         if (ee.status === 'pending' && isThisMonth) {
           const amountTRY = convertToTRY(ee.amount, ee.currency || 'TRY');
           const category = categories.find(c => c.id === ee.categoryId);
-          const name = `(Tahmini) ${category?.name || 'Diğer'}`;
+          const name = `${category?.name || 'Diğer'}\u200B`;
           expenseByCategory[name] = (expenseByCategory[name] || 0) + amountTRY;
           totalExpense += amountTRY;
           pendingExpectedIds.add(ee.sourceId);
@@ -206,7 +206,7 @@ export const Reports: React.FC<ReportsProps> = ({
           if (!alreadyPaid) {
             const amountTRY = convertToTRY(es.amount, es.currency || 'TRY');
             const category = categories.find(c => c.id === es.categoryId);
-            const name = `(Tahmini) ${category?.name || 'Diğer'}`;
+            const name = `${category?.name || 'Diğer'}\u200B`;
             expenseByCategory[name] = (expenseByCategory[name] || 0) + amountTRY;
             totalExpense += amountTRY;
           }
@@ -473,8 +473,8 @@ export const Reports: React.FC<ReportsProps> = ({
             <div className="space-y-2">
               {Object.entries(reportData.incomeBySource).map(([name, amount]) => (
                 <div key={name} className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
-                  <span className={`text-sm font-bold ${name.includes('(Tahmini)') ? 'text-muted-foreground italic' : ''}`}>
-                    {name}
+                  <span className={`text-sm font-bold ${name.endsWith('\u200B') ? 'text-muted-foreground/60 italic font-medium' : ''}`}>
+                    {name.replace(/\u200B/g, '')}
                   </span>
                   <span className="text-sm font-black font-mono text-emerald-600">
                     {formatWithEquivalent(amount, 'TRY')}
@@ -504,8 +504,8 @@ export const Reports: React.FC<ReportsProps> = ({
             <div className="space-y-2">
               {Object.entries(reportData.expenseByCategory).map(([name, amount]) => (
                 <div key={name} className="flex items-center justify-between p-3 rounded-xl bg-rose-500/5 border border-rose-500/10">
-                  <span className={`text-sm font-bold ${name.includes('(Tahmini)') ? 'text-muted-foreground italic' : ''}`}>
-                    {name}
+                  <span className={`text-sm font-bold ${name.endsWith('\u200B') ? 'text-muted-foreground/60 italic font-medium' : ''}`}>
+                    {name.replace(/\u200B/g, '')}
                   </span>
                   <span className="text-sm font-black font-mono text-rose-600">
                     {formatWithEquivalent(amount, 'TRY')}
