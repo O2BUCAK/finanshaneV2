@@ -105,6 +105,7 @@ import { SubscriptionsView } from './components/SubscriptionsView';
 import { IncomeView } from './components/IncomeView';
 import { ExpenseView } from './components/ExpenseView';
 import { ConfirmModal } from './components/ConfirmModal';
+import { SaasLanding } from './components/SaasLanding';
 
 // --- Constants ---
 
@@ -2020,8 +2021,9 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
   );
 };
 
-const Login = () => {
+const Login = ({ initialView = 'login', onViewChange }: { initialView?: 'login' | 'register'; onViewChange: (view: 'landing' | 'login' | 'register') => void }) => {
   const { login, loginWithGoogle } = useAuth();
+  const [view, setView] = useState<'login' | 'register'>(initialView);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [kvkkAccepted, setKvkkAccepted] = useState(false);
@@ -2029,39 +2031,106 @@ const Login = () => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleLocalLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!kvkkAccepted) {
-      setError('Lütfen KVKK Aydınlatma Metni\'ni onaylayın.');
-      return;
-    }
-    setIsLoggingIn(true);
+  useEffect(() => {
+    setView(initialView);
     setError(null);
-    try {
-      await login(email, name, kvkkAccepted);
-    } catch (err: any) {
-      setError(err.message || 'Giriş yapılamadı.');
-    } finally {
-      setIsLoggingIn(false);
+  }, [initialView]);
+
+  // Dynamic SEO Tags based on active view
+  useEffect(() => {
+    const title = view === 'login' 
+      ? 'Giriş Yap | FinansHane Ev Bütçesi Takip Sistemi' 
+      : 'Kayıt Ol | FinansHane Ev Bütçesi Takip Sistemi';
+    const description = view === 'login'
+      ? 'FinansHane hesabınıza güvenle giriş yapın ve ev bütçenizi yönetmeye hemen devam edin. %100 KVKK uyumlu.'
+      : 'Ücretsiz FinansHane hesabı açın. Çift kayıtlı aile bütçesi, ortak hane halkı paylaşımı ve harcama planlama özellikleri ile bütçenizi düzene sokun.';
+    const keywords = view === 'login'
+      ? 'finanshane giriş, bütçe takip giriş, üye girişi, ev bütçesi yönetim paneli'
+      : 'finanshane kayıt ol, bütçe takip üye ol, ücretsiz hesap aç, aile bütçe kaydı';
+
+    document.title = title;
+    
+    let metaDescription = document.querySelector('meta[name="description"]');
+    if (!metaDescription) {
+      metaDescription = document.createElement('meta');
+      metaDescription.setAttribute('name', 'description');
+      document.head.appendChild(metaDescription);
+    }
+    metaDescription.setAttribute('content', description);
+
+    let metaKeywords = document.querySelector('meta[name="keywords"]');
+    if (!metaKeywords) {
+      metaKeywords = document.createElement('meta');
+      metaKeywords.setAttribute('name', 'keywords');
+      document.head.appendChild(metaKeywords);
+    }
+    metaKeywords.setAttribute('content', keywords);
+  }, [view]);
+
+  const handleLocalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (view === 'register') {
+      if (!kvkkAccepted) {
+        setError('Lütfen KVKK Aydınlatma Metni\'ni onaylayın.');
+        return;
+      }
+      setIsLoggingIn(true);
+      try {
+        await login(email, name, kvkkAccepted);
+      } catch (err: any) {
+        setError(err.message || 'Kayıt sırasında hata oluştu.');
+      } finally {
+        setIsLoggingIn(false);
+      }
+    } else {
+      // Login View (Only E-mail needed)
+      setIsLoggingIn(true);
+      try {
+        const existingUsers = await localDB.users.where('email').equalsIgnoreCase(email).toArray();
+        if (existingUsers.length > 0) {
+          const u = existingUsers[0];
+          // Log in with existing profile
+          await login(u.email, u.fullName, true);
+        } else {
+          // If no local account, check if there's any user in firestore with this email (if firebase is used)
+          let foundInFirestore = false;
+          try {
+            const q = query(collection(db, 'users'), where('email', '==', email.toLowerCase()));
+            const querySnap = await getDocs(q);
+            if (!querySnap.empty) {
+              const uDoc = querySnap.docs[0];
+              const uData = uDoc.data();
+              await login(uData.email, uData.fullName, true);
+              foundInFirestore = true;
+            }
+          } catch (fErr) {
+            console.error('Firestore user lookup error:', fErr);
+          }
+
+          if (!foundInFirestore) {
+            setError('Bu e-posta adresiyle kayıtlı bir hesap bulunamadı. Lütfen "Kayıt Ol" sekmesinden yeni hesap oluşturun.');
+          }
+        }
+      } catch (err: any) {
+        setError(err.message || 'Giriş yapılamadı.');
+      } finally {
+        setIsLoggingIn(false);
+      }
     }
   };
 
   const handleGoogleLogin = async () => {
-    if (!kvkkAccepted) {
-      setError('Lütfen KVKK Aydınlatma Metni\'ni onaylayın.');
-      return;
-    }
     setIsLoggingIn(true);
     setError(null);
     try {
-      // Small delay to ensure user gesture is processed cleanly
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await loginWithGoogle(kvkkAccepted);
+      await loginWithGoogle(true);
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user') {
-        setError('Giriş penceresi kapatıldı veya önizleme ortamı tarafından engellendi. Lütfen tekrar deneyin veya "Yerel Giriş" seçeneğini kullanın.');
+        setError('Giriş penceresi kapatıldı veya önizleme ortamı tarafından engellendi. Lütfen tekrar deneyin veya "Yerel E-posta" seçeneğini kullanın.');
       } else if (err.code === 'auth/network-request-failed') {
-        setError('Ağ hatası oluştu. Bu durum genellikle tarayıcının önizleme penceresini (iframe) engellemesinden kaynaklanır. Lütfen uygulamayı yeni bir sekmede açarak deneyin veya "Yerel Giriş" seçeneğini kullanın.');
+        setError('Ağ hatası oluştu. Bu durum genellikle tarayıcının önizleme penceresini (iframe) engellemesinden kaynaklanır. Lütfen uygulamayı yeni bir sekmede açarak deneyin veya "Yerel E-posta" seçeneğini kullanın.');
       } else {
         setError(err.message || 'Google ile giriş yapılamadı.');
       }
@@ -2071,34 +2140,66 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 relative">
+      {/* Decorative Blur */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-3xl pointer-events-none" />
+
+      {/* Back Button */}
+      <button 
+        onClick={() => onViewChange('landing')}
+        className="absolute top-6 left-6 flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-semibold transition-all hover:bg-zinc-800 min-h-[44px]"
+      >
+        ← Tanıtım Sayfasına Dön
+      </button>
+
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md space-y-8"
+        className="w-full max-w-md space-y-8 relative z-10"
       >
         <div className="text-center space-y-2">
-          <div className="inline-flex p-4 bg-emerald-500/10 rounded-3xl mb-4">
-            <Wallet className="w-12 h-12 text-emerald-500" />
+          <div className="inline-flex p-4 bg-emerald-500/10 rounded-3xl mb-2 border border-emerald-500/20">
+            <Wallet className="w-10 h-10 text-emerald-500" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">FinansHane | Aile Bütçe Takip</h1>
-          <p className="text-zinc-400">Güvenli ve şifreli ev finansal yönetim sistemi. Giriş yaparak veya yeni hesap oluşturarak başlayın.</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">FinansHane</h1>
+          <p className="text-zinc-400 text-xs md:text-sm">
+            {view === 'login' 
+              ? 'Güvenli ve şifreli ev finansal yönetim sistemi' 
+              : 'Ücretsiz aile bütçe takibine hemen katılın'}
+          </p>
         </div>
 
-        <div className="space-y-6 bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 shadow-2xl">
+        <div className="space-y-6 bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 shadow-2xl backdrop-blur-sm">
+          {/* Subview Tabs */}
+          <div className="grid grid-cols-2 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-center text-xs font-bold">
+            <button 
+              onClick={() => setView('login')}
+              className={`py-2.5 rounded-lg transition-all min-h-[38px] ${view === 'login' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Giriş Yap
+            </button>
+            <button 
+              onClick={() => setView('register')}
+              className={`py-2.5 rounded-lg transition-all min-h-[38px] ${view === 'register' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Yeni Kayıt
+            </button>
+          </div>
+
           {error && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-sm flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              {error}
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-500 text-xs flex items-center gap-2 leading-relaxed">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
+          {/* Google SSO Button */}
           <button
             onClick={handleGoogleLogin}
             disabled={isLoggingIn}
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-100 text-zinc-950 font-bold py-4 rounded-2xl transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-100 text-zinc-950 font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-white/5 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] text-sm"
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -2121,7 +2222,7 @@ const Login = () => {
 
           <button
             onClick={() => window.open(window.location.href, '_blank')}
-            className="w-full flex items-center justify-center gap-2 text-zinc-500 hover:text-zinc-300 text-xs font-medium transition-all"
+            className="w-full flex items-center justify-center gap-1.5 text-zinc-500 hover:text-zinc-400 text-[10px] font-medium transition-all min-h-[30px]"
           >
             <ArrowUpRight className="w-3 h-3" />
             Sorun mu yaşıyorsunuz? Yeni sekmede açın
@@ -2131,65 +2232,93 @@ const Login = () => {
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-zinc-800"></div>
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-zinc-900 px-2 text-zinc-500">Veya E-posta ile Devam Et</span>
+            <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
+              <span className="bg-[#121214] px-3.5 text-zinc-500 font-bold">Veya E-posta ile Devam Et</span>
             </div>
           </div>
 
-          <form onSubmit={handleLocalLogin} className="space-y-4">
+          <form onSubmit={handleLocalSubmit} className="space-y-4">
+            {view === 'register' && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Ad Soyad</label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white placeholder-zinc-700 text-sm min-h-[44px]"
+                  placeholder="Adınız Soyadınız"
+                />
+              </div>
+            )}
+            
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Ad Soyad</label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
-                placeholder="Adınız"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">E-posta</label>
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">E-posta Adresi</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white"
-                placeholder="E-posta adresiniz"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-white placeholder-zinc-700 text-sm min-h-[44px]"
+                placeholder="ornek@e-posta.com"
               />
             </div>
 
-            <div className="flex items-start gap-3 py-2">
-              <div className="flex items-center h-5">
-                <input
-                  id="kvkk"
-                  type="checkbox"
-                  checked={kvkkAccepted}
-                  onChange={(e) => setKvkkAccepted(e.target.checked)}
-                  className="w-4 h-4 bg-zinc-950 border-zinc-800 rounded text-emerald-500 focus:ring-emerald-500/20"
-                />
+            {view === 'register' && (
+              <div className="flex items-start gap-3 py-2">
+                <div className="flex items-center h-5">
+                  <input
+                    id="kvkk"
+                    type="checkbox"
+                    checked={kvkkAccepted}
+                    onChange={(e) => setKvkkAccepted(e.target.checked)}
+                    className="w-4 h-4 bg-zinc-950 border-zinc-800 rounded text-emerald-500 focus:ring-emerald-500/20"
+                  />
+                </div>
+                <label htmlFor="kvkk" className="text-xs text-zinc-400 leading-relaxed select-none">
+                  <button 
+                    type="button"
+                    onClick={() => setIsKvkkModalOpen(true)}
+                    className="text-emerald-500 hover:underline font-bold"
+                  >
+                    KVKK Aydınlatma Metni
+                  </button>
+                  'ni okudum ve verilerimin güvenli şekilde işlenmesini onaylıyorum.
+                </label>
               </div>
-              <label htmlFor="kvkk" className="text-xs text-zinc-400 leading-relaxed">
-                <button 
-                  type="button"
-                  onClick={() => setIsKvkkModalOpen(true)}
-                  className="text-emerald-500 hover:underline font-medium"
-                >
-                  KVKK Aydınlatma Metni
-                </button>
-                'ni okudum ve verilerimin güvenli şekilde işlenmesini onaylıyorum.
-              </label>
-            </div>
+            )}
 
             <button
               type="submit"
               disabled={isLoggingIn}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2 min-h-[44px]"
             >
-              {isLoggingIn ? 'İşleniyor...' : 'Giriş Yap veya Kayıt Ol'}
+              {isLoggingIn 
+                ? 'İşlem Sürüyor...' 
+                : view === 'login' 
+                  ? 'Giriş Yap' 
+                  : 'Kayıt Ol ve Başla'}
             </button>
           </form>
+
+          {/* Bottom toggle advice */}
+          <div className="text-center pt-2">
+            {view === 'login' ? (
+              <button 
+                onClick={() => setView('register')}
+                className="text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                Hesabınız yok mu? <span className="text-emerald-500 font-bold hover:underline">Yeni kayıt oluşturun →</span>
+              </button>
+            ) : (
+              <button 
+                onClick={() => setView('login')}
+                className="text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                Zaten hesabınız var mı? <span className="text-emerald-500 font-bold hover:underline">Giriş yapın →</span>
+              </button>
+            )}
+          </div>
         </div>
       </motion.div>
 
@@ -3988,6 +4117,7 @@ import { PublicSharedBudgetView } from './components/PublicSharedBudgetView';
 const AppContent = () => {
   const { user, household, loading } = useAuth();
   const [sharedGroupCode, setSharedGroupCode] = useState<string | null>(null);
+  const [publicView, setPublicView] = useState<'landing' | 'login' | 'register'>('landing');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -4013,7 +4143,12 @@ const AppContent = () => {
     );
   }
 
-  if (!user) return <Login />;
+  if (!user) {
+    if (publicView === 'landing') {
+      return <SaasLanding onViewChange={setPublicView} />;
+    }
+    return <Login initialView={publicView} onViewChange={setPublicView} />;
+  }
   if (!household) return <JoinOrCreateHousehold />;
   return <Dashboard />;
 };
