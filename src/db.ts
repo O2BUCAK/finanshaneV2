@@ -43,6 +43,10 @@ export class AppDatabase extends Dexie {
       sharedBudgets: 'id, name, joinCode',
       auditLogs: 'id, timestamp, action, userId'
     });
+    this.version(2).stores({
+      accounts: 'id, name, type, branch, subType, ownerId, householdId',
+      transactions: 'id, date, debitAccountId, creditAccountId, categoryId, userId, parentTransactionId, householdId',
+    });
   }
 }
 

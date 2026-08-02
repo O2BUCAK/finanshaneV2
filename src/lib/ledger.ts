@@ -249,8 +249,7 @@ export async function deleteInstallmentGroup(
 ) {
   try {
     const allTxs = await localDB.transactions
-      .where('parentTransactionId')
-      .equals(parentTransactionId)
+      .filter(t => t.parentTransactionId === parentTransactionId)
       .toArray();
 
     const parentTx = await localDB.transactions.get(parentTransactionId);
