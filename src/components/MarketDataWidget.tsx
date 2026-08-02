@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, RefreshCw, DollarSign, Euro, Coins, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, RefreshCw, DollarSign, Euro, Coins, Search, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { GoogleGenAI } from "@google/genai";
+import { TurkishApisHub } from './TurkishApisHub';
 
 interface MarketData {
   [key: string]: {
@@ -20,6 +21,7 @@ export const MarketDataWidget: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [smartLoading, setSmartLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [isHubOpen, setIsHubOpen] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -108,6 +110,13 @@ export const MarketDataWidget: React.FC = () => {
               <Search className="w-2 h-2" /> Google Finans
             </span>
           )}
+          <button
+            onClick={() => setIsHubOpen(true)}
+            className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Türkiye API Hub</span>
+          </button>
           <span className="text-[10px] text-zinc-500 font-medium">Son Güncelleme: {lastUpdate}</span>
           <div className="flex items-center gap-1">
             <button 
@@ -186,6 +195,8 @@ export const MarketDataWidget: React.FC = () => {
       <p className="text-[9px] text-zinc-600 mt-4 text-center italic">
         * Veriler canlı piyasa kaynaklarından sağlanmaktadır. Yatırım tavsiyesi değildir.
       </p>
+
+      <TurkishApisHub isOpen={isHubOpen} onClose={() => setIsHubOpen(false)} />
     </div>
   );
 };

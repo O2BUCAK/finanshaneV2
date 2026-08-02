@@ -20,7 +20,25 @@ export const useExchangeRates = (isPrivacyMode: boolean = false) => {
   useEffect(() => {
     const fetchRates = async () => {
       try {
-        // Using ExchangeRate-API (free tier, no key required, base USD)
+        // Try official TCMB XML endpoint first
+        const tcmbRes = await fetch('/api/tcmb-rates');
+        if (tcmbRes.ok) {
+          const tcmbData = await tcmbRes.json();
+          if (tcmbData.rates && tcmbData.rates.USD) {
+            const usdTry = tcmbData.rates.USD.forexSelling || tcmbData.rates.USD.forexBuying || 44.59;
+            const eurTry = tcmbData.rates.EUR ? (tcmbData.rates.EUR.forexSelling || 48.25) : 48.25;
+            setRates({
+              TRY: usdTry,
+              USD: 1,
+              EUR: usdTry / eurTry,
+            });
+            setError(null);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Fallback: Using ExchangeRate-API (free tier, base USD)
         const response = await fetch('https://open.er-api.com/v6/latest/USD');
         if (!response.ok) {
           throw new Error('Failed to fetch exchange rates');

@@ -1,5 +1,12 @@
 import express from 'express';
 import { GoogleGenAI } from "@google/genai";
+import { 
+  getTcmbRates, 
+  getTurkishCryptoTickers, 
+  getGoldRates, 
+  getTefasFund, 
+  getMacroAndHolidays 
+} from './turkishService.ts';
 
 const app = express();
 app.use(express.json());
@@ -7,6 +14,60 @@ app.use(express.json());
 // API Routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// TCMB (Türkiye Cumhuriyet Merkez Bankası) Official XML Rates
+app.get('/api/tcmb-rates', async (req, res) => {
+  try {
+    const rates = await getTcmbRates();
+    res.json({ success: true, source: 'TCMB (today.xml)', rates });
+  } catch (error) {
+    res.status(500).json({ error: 'TCMB kurları alınamadı' });
+  }
+});
+
+// Yerel Kripto Borsaları (BtcTurk & Paribu)
+app.get('/api/crypto-tr', async (req, res) => {
+  try {
+    const tickers = await getTurkishCryptoTickers();
+    res.json({ success: true, source: 'BtcTurk & Paribu', tickers });
+  } catch (error) {
+    res.status(500).json({ error: 'Kripto verileri alınamadı' });
+  }
+});
+
+// Kapalıçarşı & Serbest Piyasa Altın / Gümüş
+app.get('/api/gold-rates', async (req, res) => {
+  try {
+    const gold = await getGoldRates();
+    res.json({ success: true, source: 'Kapalıçarşı & Serbest Piyasa', rates: gold });
+  } catch (error) {
+    res.status(500).json({ error: 'Altın kurları alınamadı' });
+  }
+});
+
+// TEFAS & BES Yatırım Fonu Sorgulama
+app.get('/api/tefas-funds', async (req, res) => {
+  const code = (req.query.code as string) || 'AFT';
+  try {
+    const fund = await getTefasFund(code);
+    if (!fund) {
+      return res.status(404).json({ error: 'Fon bulunamadı' });
+    }
+    res.json({ success: true, source: 'TEFAS Platformu', fund });
+  } catch (error) {
+    res.status(500).json({ error: 'TEFAS verisi alınamadı' });
+  }
+});
+
+// Makroekonomik Veriler & Türkiye Resmi Tatilleri
+app.get('/api/macro-tr', async (req, res) => {
+  try {
+    const macro = await getMacroAndHolidays();
+    res.json({ success: true, data: macro });
+  } catch (error) {
+    res.status(500).json({ error: 'Makro veriler alınamadı' });
+  }
 });
 
 // Gemini API endpoint

@@ -92,26 +92,15 @@ export const useAssetPrices = (symbols: { symbol: string; type: 'stock' | 'crypt
             }
           } else if (type === 'fund') {
             try {
-              // TEFAS Funds via proxy
-              const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.tefas.gov.tr/FonAnaliz/FonGenelBilgileri?fonKod=${symbol}`)}`);
-              
+              const res = await fetch(`/api/tefas-funds?code=${encodeURIComponent(symbol)}`);
               if (res.ok) {
                 const data = await res.json();
-                const html = data.contents;
-                
-                // Extract price and change from TEFAS page
-                const priceMatch = html.match(/<span>Son Fiyat \(TL\)<\/span>\s*<ul>\s*<li>([^<]+)<\/li>/);
-                const changeMatch = html.match(/<span>Günlük Getiri \(%\)<\/span>\s*<ul>\s*<li[^>]*>([^<]+)<\/li>/);
-                
-                if (priceMatch) {
-                  const price = parseFloat(priceMatch[1].replace('.', '').replace(',', '.'));
-                  const change = changeMatch ? parseFloat(changeMatch[1].replace(',', '.')) : 0;
-                  
+                if (data.fund) {
                   newPrices[symbol] = {
                     symbol,
-                    price,
+                    price: data.fund.price,
                     currency: 'TRY',
-                    changePercent: change
+                    changePercent: data.fund.dailyReturn
                   };
                 }
               }

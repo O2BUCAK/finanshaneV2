@@ -8,6 +8,7 @@ import { motion, Reorder } from 'framer-motion';
 import { Account, Transaction, IncomeSource, ExpectedIncome, PlannedExpense } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { MarketDataWidget } from './MarketDataWidget';
+import { InflationMetricsWidget } from './InflationMetricsWidget';
 import { getCreditCardFutureDebt } from '../lib/ledger';
 
 interface DashboardProps {
@@ -72,6 +73,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const defaultLayout = [
     { id: 'master_widget', visible: true },
+    { id: 'inflation_metrics', visible: true },
     { id: 'market_data', visible: true },
     { id: 'credit_cards', visible: true },
     { id: 'bes_oks_summary', visible: true },
@@ -334,6 +336,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <p className="text-xl font-black text-rose-500 tracking-tight">-{formatWithEquivalent(totalExpense, 'TRY', isItemHidden('master_widget'))}</p>
               </div>
             </div>
+          </div>
+        );
+
+      case 'inflation_metrics':
+        return (
+          <div className="relative group">
+            <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleLocalPrivacy(id);
+                }}
+                className={`p-1.5 border border-border/50 rounded-lg transition-all ${
+                  isItemHidden(id)
+                    ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20'
+                    : 'bg-zinc-900/80 backdrop-blur-sm text-muted-foreground/50 hover:text-foreground hover:bg-zinc-800'
+                }`}
+                title={isItemHidden(id) ? 'Göster' : 'Gizle'}
+              >
+                {isItemHidden(id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+            </div>
+            <InflationMetricsWidget
+              totalAssetsTRY={totalAssets}
+              totalMonthlyExpenseTRY={totalExpense > 0 ? totalExpense : (plannedExpenses.reduce((s, p) => s + convertToTRY(p.amount, p.currency || 'TRY'), 0) || 30000)}
+              formatWithEquivalent={formatWithEquivalent}
+              isPrivacyHidden={isItemHidden('inflation_metrics')}
+            />
           </div>
         );
 
