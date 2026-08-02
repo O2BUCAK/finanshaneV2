@@ -3,12 +3,14 @@ import {
   Wallet, Building2, Bitcoin, Gift, RefreshCw, 
   Plus, Search, ChevronRight, AlertCircle, CheckCircle2,
   ExternalLink, Settings2, Eye, EyeOff, TrendingUp, TrendingDown,
-  LayoutGrid, List as ListIcon
+  LayoutGrid, List as ListIcon, Trash2, Pencil, X, ArrowUpRight, ArrowDownLeft,
+  Filter, Tag, Calendar, CreditCard, Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Account } from '../types';
+import { Account, Transaction } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { syncAccountWithApi } from '../lib/apiIntegrations';
+import { deleteLedgerTransaction } from '../lib/ledger';
 
 interface AccountsViewProps {
   householdId: string;
@@ -16,6 +18,10 @@ interface AccountsViewProps {
   assetPrices: Record<string, { price: number; changePercent: number }>;
   onAddAccount: () => void;
   onEditAccount: (account: Account) => void;
+  onDeleteAccount?: (accountId: string) => Promise<void> | void;
+  transactions?: Transaction[];
+  categories?: Account[];
+  onEditTransaction?: (tx: Transaction) => void;
   isPrivacyMode?: boolean;
 }
 
@@ -25,6 +31,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   assetPrices,
   onAddAccount,
   onEditAccount,
+  onDeleteAccount,
+  transactions = [],
+  categories = [],
+  onEditTransaction,
   isPrivacyMode = false
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,6 +43,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [syncResults, setSyncResults] = useState<Record<string, { success: boolean; message: string }>>({});
   const [toggledAccounts, setToggledAccounts] = useState<Set<string>>(new Set());
+
+  // Detail Modal & Account Deletion State
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [deleteConfirmAccount, setDeleteConfirmAccount] = useState<Account | null>(null);
+  const [accTxFilter, setAccTxFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
+  const [accTxSearch, setAccTxSearch] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
 
   const toggleLocalPrivacy = (accountId: string) => {
@@ -59,19 +77,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     const rate = account.depositDetails.interestRate / 100;
     let accrued = 0;
 
-    // Simple interest calculation based on period
     switch (account.depositDetails.period) {
       case 'daily':
-        // If it's a daily rate (unlikely but possible)
         accrued = account.balance * rate * diffDays;
         break;
       case 'monthly':
-        // If it's an annual rate but calculated monthly
-        accrued = (account.balance * rate * diffDays) / 365;
-        break;
       case 'yearly':
       default:
-        // Standard annual rate calculation
         accrued = (account.balance * rate * diffDays) / 365;
         break;
     }
@@ -142,7 +154,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         next.delete(account.id);
         return next;
       });
-      // Clear result after 3 seconds
       setTimeout(() => {
         setSyncResults(prev => {
           const next = { ...prev };
@@ -150,6 +161,22 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           return next;
         });
       }, 3000);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmAccount || !onDeleteAccount) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteAccount(deleteConfirmAccount.id);
+      if (selectedAccount?.id === deleteConfirmAccount.id) {
+        setSelectedAccount(null);
+      }
+      setDeleteConfirmAccount(null);
+    } catch (err) {
+      console.error("Account delete error:", err);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -163,12 +190,103 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     }
   };
 
+  // Transactions specific to selectedAccount
+  const selectedAccountTxs = useMemo(() => {
+    if (!selectedAccount) return [];
+    return transactions.filter(tx => 
+      tx.debitAccountId === selectedAccount.id ||
+      tx.creditAccountId === selectedAccount.id ||
+      tx.categoryId === selectedAccount.id
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [selectedAccount, transactions]);
+
+  // Helper to determine if transaction is incoming (+) or outgoing (-) for an account
+  const getTxDirection = (tx: Transaction, account: Account) => {
+    const isAsset = account.type === 'asset' || account.subType === 'cash' || account.subType === 'liquidity_deposit' || account.subType === 'investment';
+    const isLiability = account.subType === 'credit_card' || account.type === 'liability';
+
+    if (isAsset) {
+      if (tx.debitAccountId === account.id) {
+        return 'incoming';
+      }
+      return 'outgoing';
+    } else if (isLiability) {
+      if (tx.creditAccountId === account.id) {
+        return 'outgoing'; // Spend on credit card
+      }
+      return 'incoming'; // Payment towards credit card
+    } else {
+      if (tx.debitAccountId === account.id) return 'incoming';
+      return 'outgoing';
+    }
+  };
+
+  const filteredAccountTxs = useMemo(() => {
+    if (!selectedAccount) return [];
+    return selectedAccountTxs.filter(tx => {
+      const dir = getTxDirection(tx, selectedAccount);
+      if (accTxFilter === 'incoming' && dir !== 'incoming') return false;
+      if (accTxFilter === 'outgoing' && dir !== 'outgoing') return false;
+
+      if (accTxSearch) {
+        const q = accTxSearch.toLowerCase();
+        const matchDesc = tx.description.toLowerCase().includes(q);
+        const matchAmount = tx.amount.toString().includes(q);
+        return matchDesc || matchAmount;
+      }
+
+      return true;
+    });
+  }, [selectedAccountTxs, selectedAccount, accTxFilter, accTxSearch]);
+
+  const accTxStats = useMemo(() => {
+    if (!selectedAccount) return { totalIncoming: 0, totalOutgoing: 0, count: 0 };
+    let totalIncoming = 0;
+    let totalOutgoing = 0;
+
+    selectedAccountTxs.forEach(tx => {
+      const dir = getTxDirection(tx, selectedAccount);
+      if (dir === 'incoming') {
+        totalIncoming += tx.amount;
+      } else {
+        totalOutgoing += tx.amount;
+      }
+    });
+
+    return {
+      totalIncoming,
+      totalOutgoing,
+      count: selectedAccountTxs.length
+    };
+  }, [selectedAccountTxs, selectedAccount]);
+
+  const getCounterpartName = (tx: Transaction, account: Account, dir: 'incoming' | 'outgoing') => {
+    let counterpartId = '';
+    if (dir === 'incoming') {
+      counterpartId = tx.creditAccountId || tx.categoryId || '';
+    } else {
+      counterpartId = tx.debitAccountId || tx.categoryId || '';
+    }
+
+    if (!counterpartId || counterpartId === account.id) {
+      return dir === 'incoming' ? 'Gelir / Transfer' : 'Gider / Transfer';
+    }
+
+    const foundCategory = categories.find(c => c.id === counterpartId);
+    if (foundCategory) return foundCategory.name;
+
+    const foundAccount = accounts.find(a => a.id === counterpartId);
+    if (foundAccount) return foundAccount.name;
+
+    return dir === 'incoming' ? 'Gelir' : 'Gider';
+  };
+
   return (
     <div className="space-y-6 pb-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-black tracking-tighter text-foreground">Hesaplarım</h1>
-          <p className="text-muted-foreground text-sm font-medium mt-1">Tüm banka, kripto ve sosyal hesaplarınızın yönetimi</p>
+          <p className="text-muted-foreground text-sm font-medium mt-1">Tüm banka, nakit, kredi kartı ve yatırım hesaplarınızın detayları</p>
         </div>
         
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -242,7 +360,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               layout
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="group corporate-card overflow-hidden relative border border-border/30 hover:border-primary/30 transition-all duration-500"
+              onClick={() => setSelectedAccount(account)}
+              className="group corporate-card overflow-hidden relative border border-border/30 hover:border-emerald-500/50 hover:shadow-xl hover:shadow-emerald-500/5 cursor-pointer transition-all duration-500"
             >
               <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full -mr-24 -mt-24 blur-3xl group-hover:bg-primary/10 transition-colors duration-700" />
               
@@ -257,39 +376,48 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mt-1">{account.institution || 'Diğer Kurum'}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                     {account.apiConfig && (
                       <button 
                         onClick={() => handleSync(account)}
                         disabled={syncingIds.has(account.id)}
-                        className={`p-2.5 rounded-xl transition-all duration-500 ${
+                        className={`p-2 rounded-xl transition-all duration-500 ${
                           syncingIds.has(account.id) 
                             ? 'bg-emerald-500/20 text-emerald-500 animate-spin' 
                             : 'bg-secondary/50 text-muted-foreground hover:text-emerald-500 border border-border/50 hover:bg-emerald-500/10 hover:border-emerald-500/30'
                         }`}
                         title="API ile Senkronize Et"
                       >
-                        <RefreshCw className="w-4 h-4" />
+                        <RefreshCw className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button 
                       onClick={() => toggleLocalPrivacy(account.id)}
-                      className={`p-2.5 border border-border/50 rounded-xl transition-all duration-500 ${
+                      className={`p-2 border border-border/50 rounded-xl transition-all duration-500 ${
                         isAccountHidden(account.id)
                           ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/30 shadow-lg shadow-emerald-500/10'
                           : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary'
                       }`}
                       title={isAccountHidden(account.id) ? 'Göster' : 'Gizle'}
                     >
-                      {isAccountHidden(account.id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      {isAccountHidden(account.id) ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                     </button>
                     <button 
                       onClick={() => onEditAccount(account)}
-                      className="p-2.5 bg-secondary/50 text-muted-foreground hover:text-foreground border border-border/50 rounded-xl transition-all duration-500 hover:bg-secondary"
+                      className="p-2 bg-secondary/50 text-muted-foreground hover:text-foreground border border-border/50 rounded-xl transition-all duration-500 hover:bg-secondary"
                       title="Düzenle"
                     >
-                      <Settings2 className="w-4 h-4" />
+                      <Settings2 className="w-3.5 h-3.5" />
                     </button>
+                    {onDeleteAccount && (
+                      <button 
+                        onClick={() => setDeleteConfirmAccount(account)}
+                        className="p-2 bg-rose-500/10 text-rose-400 hover:text-rose-300 border border-rose-500/20 rounded-xl transition-all duration-500 hover:bg-rose-500/20"
+                        title="Hesabı Sil"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -319,151 +447,32 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                         </p>
                       </div>
                     )}
-                    {account.apiConfig?.lastSync && (
-                      <div className="text-right">
-                        <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black mb-2 opacity-60">Son Senk.</p>
-                        <p className="text-xs font-black text-muted-foreground opacity-80">
-                          {new Date(account.apiConfig.lastSync).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    )}
                   </div>
 
-                  {account.type === 'asset' && account.assetDetails && assetPrices[account.assetDetails.symbol] && (
-                    <div className="mt-6 p-4 bg-zinc-950/30 rounded-2xl border border-border/50">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <div className={`p-1.5 rounded-lg ${
-                            (account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) >= account.balance 
-                              ? 'bg-emerald-500/10 text-emerald-500' 
-                              : 'bg-rose-500/10 text-rose-500'
-                          }`}>
-                            {(account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) >= account.balance 
-                              ? <TrendingUp className="w-3 h-3" /> 
-                              : <TrendingDown className="w-3 h-3" />
-                            }
-                          </div>
-                          <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Kar / Zarar</span>
-                        </div>
-                        <span className={`text-sm font-black ${
-                          (account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) >= account.balance 
-                            ? 'text-emerald-500' 
-                            : 'text-rose-500'
-                        }`}>
-                          {formatWithEquivalent(
-                            (account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) - account.balance,
-                            account.currency || 'TRY',
-                            isAccountHidden(account.id)
-                          )}
-                          <span className="ml-1 text-[10px] opacity-60">
-                            ({(((account.assetDetails.quantity * assetPrices[account.assetDetails.symbol].price) / (account.balance || 1) - 1) * 100).toFixed(2)}%)
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {account.depositDetails?.isTimeDeposit && (
-                    <div className="mt-6 p-4 bg-zinc-950/30 rounded-2xl border border-border/50">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
-                            <TrendingUp className="w-3 h-3" />
-                          </div>
-                          <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Birikmiş Faiz</span>
-                        </div>
-                        <span className="text-sm font-black text-emerald-500">
-                          {formatWithEquivalent(
-                            calculateAccruedInterest(account),
-                            account.currency || 'TRY',
-                            isAccountHidden(account.id)
-                          )}
-                          <span className="ml-1 text-[10px] opacity-60">
-                            (%{account.depositDetails.interestRate})
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {account.loanDetails && (
-                    <div className="mt-6 space-y-4 p-6 bg-zinc-950/30 rounded-[2rem] border border-border/50 relative overflow-hidden group/loan-info hover:bg-zinc-950/50 transition-all duration-500">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-3xl transition-all duration-700 group-hover/loan-info:bg-emerald-500/10" />
-                      
-                      <div className="flex justify-between items-center relative z-10">
-                        <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kalan Borç</span>
-                        <span className="text-sm font-black text-foreground">{formatWithEquivalent(account.loanDetails.remainingPrincipal, account.currency || 'TRY', isAccountHidden(account.id))}</span>
-                      </div>
-                      
-                      <div className="h-2 w-full bg-secondary/50 rounded-full overflow-hidden relative z-10 p-0.5 border border-border/30">
-                        <motion.div 
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min((1 - (account.loanDetails.remainingPrincipal / account.loanDetails.principal)) * 100, 100)}%` }}
-                          transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
-                          className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.4)]" 
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 pt-1 relative z-10">
-                        <div>
-                          <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Aylık Taksit</p>
-                          <p className="text-sm font-black text-emerald-500">{formatWithEquivalent(account.loanDetails.monthlyPayment, account.currency || 'TRY', isAccountHidden(account.id))}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Sonraki Ödeme</p>
-                          <p className="text-sm font-black text-foreground">
-                            {new Date(account.loanDetails.nextPaymentDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-border/30 grid grid-cols-2 gap-4 relative z-10">
-                        <div>
-                          <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Toplam Faiz</p>
-                          <p className="text-xs font-black text-rose-500">{formatWithEquivalent(account.loanDetails.totalInterest, account.currency || 'TRY', isAccountHidden(account.id))}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Vade</p>
-                          <p className="text-xs font-black text-foreground">{account.loanDetails.termMonths} Ay</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   {account.subType === 'credit_card' && (
-                    <div className="mt-6 space-y-4 p-6 bg-zinc-950/30 rounded-[2rem] border border-border/50 relative overflow-hidden group/card-info hover:bg-zinc-950/50 transition-all duration-500">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full -mr-16 -mt-16 blur-3xl transition-all duration-700 group-hover/card-info:bg-rose-500/10" />
-                      
-                      <div className="flex justify-between items-center relative z-10">
-                        <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kart Limiti</span>
-                        <span className="text-sm font-black text-foreground">{formatWithEquivalent(account.creditLimit || 0, account.currency || 'TRY', isAccountHidden(account.id))}</span>
+                    <div className="mt-4 p-3 bg-zinc-950/40 rounded-2xl border border-border/50 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-zinc-400 font-medium">Kalan Limit:</span>
+                        <span className="font-extrabold text-emerald-400">
+                          {formatWithEquivalent((account.creditLimit || 0) - account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
+                        </span>
                       </div>
-                      <div className="flex justify-between items-center relative z-10">
-                        <span className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">Kalan Limit</span>
-                        <span className="text-sm font-black text-emerald-500">{formatWithEquivalent((account.creditLimit || 0) - account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</span>
-                      </div>
-                      <div className="h-2 w-full bg-secondary/50 rounded-full overflow-hidden relative z-10 p-0.5 border border-border/30">
-                        <motion.div 
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min((account.balance / (account.creditLimit || 1)) * 100, 100)}%` }}
-                          transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
-                          className="h-full bg-gradient-to-r from-rose-500 to-rose-400 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.4)]" 
+                      <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
+                        <div 
+                          className="bg-rose-500 h-full rounded-full"
+                          style={{ width: `${Math.min(100, (account.balance / (account.creditLimit || 1)) * 100)}%` }}
                         />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 pt-1 relative z-10">
-                        <div>
-                          <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Güncel Borç</p>
-                          <p className="text-sm font-black text-foreground">{formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[8px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mb-1">Asgari Tutar</p>
-                          <p className="text-sm font-black text-foreground">
-                            {formatWithEquivalent(account.balance * ((account.creditLimit || 0) >= 25000 ? 0.4 : 0.2), account.currency || 'TRY', isAccountHidden(account.id))}
-                          </p>
-                        </div>
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Open Account Transactions Button Footer */}
+                <div className="pt-2 flex items-center justify-between text-xs font-bold text-emerald-500 group-hover:text-emerald-400 transition-colors">
+                  <span className="flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5" /> Hesap İşlemlerini Gör
+                  </span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>
 
                 <AnimatePresence>
@@ -484,16 +493,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   )}
                 </AnimatePresence>
               </div>
-              
-              {account.branch === 'crypto' && (
-                <div className="px-10 py-4 bg-secondary/50 border-t border-border/50 flex items-center justify-between group-hover:bg-secondary/80 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <Bitcoin className="w-4 h-4 text-orange-500" />
-                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.25em] opacity-60">Kripto Varlık</span>
-                  </div>
-                  <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                </div>
-              )}
             </motion.div>
           ))}
         </div>
@@ -514,7 +513,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 {accs.map(account => (
                   <div 
                     key={account.id}
-                    className="corporate-card p-4 flex items-center justify-between hover:border-primary/30 transition-all group"
+                    onClick={() => setSelectedAccount(account)}
+                    className="corporate-card p-4 flex items-center justify-between hover:border-emerald-500/50 hover:shadow-md cursor-pointer transition-all group"
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-secondary/50 rounded-xl flex items-center justify-center border border-border/50 group-hover:scale-110 transition-transform">
@@ -522,7 +522,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-black text-sm text-foreground">{account.name}</h3>
+                          <h3 className="font-black text-sm text-foreground group-hover:text-emerald-400 transition-colors">{account.name}</h3>
                           {account.assetDetails?.symbol && (
                             <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded uppercase">
                               {account.assetDetails.symbol}
@@ -551,20 +551,31 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                         </p>
                       </div>
                       
-                      <div className="flex gap-1">
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                         <button 
                           onClick={() => toggleLocalPrivacy(account.id)}
                           className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                          title={isAccountHidden(account.id) ? 'Göster' : 'Gizle'}
                         >
                           {isAccountHidden(account.id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </button>
                         <button 
                           onClick={() => onEditAccount(account)}
                           className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                          title="Düzenle"
                         >
                           <Settings2 className="w-4 h-4" />
                         </button>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground/30 self-center ml-2" />
+                        {onDeleteAccount && (
+                          <button 
+                            onClick={() => setDeleteConfirmAccount(account)}
+                            className="p-2 text-rose-400 hover:text-rose-300 transition-colors"
+                            title="Hesabı Sil"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-emerald-400 self-center ml-2 transition-colors" />
                       </div>
                     </div>
                   </div>
@@ -584,6 +595,281 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           <p className="text-muted-foreground max-w-xs mx-auto text-sm font-medium">Arama kriterlerinize uygun hesap bulunamadı veya henüz hesap eklemediniz.</p>
         </div>
       )}
+
+      {/* Account Details & Transactions Modal */}
+      <AnimatePresence>
+        {selectedAccount && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto"
+            onClick={() => setSelectedAccount(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="corporate-card w-full max-w-4xl p-6 md:p-8 bg-zinc-950/95 border border-zinc-800 rounded-3xl space-y-6 max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between pb-4 border-b border-zinc-800 shrink-0">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800 shrink-0">
+                    {getBranchIcon(selectedAccount.branch || '')}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-2xl font-black text-foreground">{selectedAccount.name}</h2>
+                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        {selectedAccount.institution || 'Hesap'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                      {selectedAccount.subType === 'credit_card' ? 'Kredi Kartı Hesabı' : 'Gelen ve giden tüm hesap hareketleri'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      onEditAccount(selectedAccount);
+                      setSelectedAccount(null);
+                    }}
+                    className="p-2 text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 rounded-xl transition-colors"
+                    title="Hesabı Düzenle"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  {onDeleteAccount && (
+                    <button
+                      onClick={() => setDeleteConfirmAccount(selectedAccount)}
+                      className="p-2 text-rose-400 hover:text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl transition-colors"
+                      title="Hesabı Sil"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedAccount(null)}
+                    className="p-2 text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 rounded-xl transition-colors ml-2"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats Bar */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Güncel Bakiye</span>
+                  <span className={`text-lg font-black ${selectedAccount.subType === 'credit_card' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {formatWithEquivalent(selectedAccount.balance, selectedAccount.currency || 'TRY')}
+                  </span>
+                </div>
+
+                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider block flex items-center gap-1">
+                    <ArrowDownLeft className="w-3.5 h-3.5" /> Toplam Gelen (+)
+                  </span>
+                  <span className="text-lg font-black text-emerald-400">
+                    +{formatWithEquivalent(accTxStats.totalIncoming, selectedAccount.currency || 'TRY')}
+                  </span>
+                </div>
+
+                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                  <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block flex items-center gap-1">
+                    <ArrowUpRight className="w-3.5 h-3.5" /> Toplam Giden (-)
+                  </span>
+                  <span className="text-lg font-black text-rose-400">
+                    -{formatWithEquivalent(accTxStats.totalOutgoing, selectedAccount.currency || 'TRY')}
+                  </span>
+                </div>
+
+                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Toplam İşlem</span>
+                  <span className="text-lg font-black text-foreground">
+                    {accTxStats.count} İşlem
+                  </span>
+                </div>
+              </div>
+
+              {/* Controls: Filter & Search */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+                  <button
+                    onClick={() => setAccTxFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      accTxFilter === 'all' ? 'bg-indigo-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Tümü ({selectedAccountTxs.length})
+                  </button>
+                  <button
+                    onClick={() => setAccTxFilter('incoming')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      accTxFilter === 'incoming' ? 'bg-emerald-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Gelen (+)
+                  </button>
+                  <button
+                    onClick={() => setAccTxFilter('outgoing')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      accTxFilter === 'outgoing' ? 'bg-rose-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Giden (-)
+                  </button>
+                </div>
+
+                <div className="relative flex-1 sm:max-w-xs">
+                  <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="İşlemlerde ara..."
+                    value={accTxSearch}
+                    onChange={(e) => setAccTxSearch(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-zinc-600"
+                  />
+                </div>
+              </div>
+
+              {/* Transaction List */}
+              <div className="overflow-y-auto flex-1 pr-1 border border-zinc-900 rounded-2xl">
+                <table className="w-full text-left">
+                  <thead className="bg-zinc-900/90 text-[10px] text-zinc-400 uppercase tracking-wider sticky top-0 backdrop-blur-sm z-10">
+                    <tr>
+                      <th className="px-4 py-3 font-bold">Tarih</th>
+                      <th className="px-4 py-3 font-bold">Açıklama</th>
+                      <th className="px-4 py-3 font-bold">Kategori / Hesap</th>
+                      <th className="px-4 py-3 font-bold text-right">Tutar</th>
+                      <th className="px-4 py-3 text-right">İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-900">
+                    {filteredAccountTxs.length > 0 ? (
+                      filteredAccountTxs.map((tx) => {
+                        const dir = getTxDirection(tx, selectedAccount);
+                        const counterpart = getCounterpartName(tx, selectedAccount, dir);
+                        const isIncoming = dir === 'incoming';
+                        const isInst = tx.isInstallment || (tx.installmentCount && tx.installmentCount > 1);
+
+                        return (
+                          <tr key={tx.id} className="hover:bg-zinc-900/50 transition-colors group">
+                            <td className="px-4 py-3 text-xs text-zinc-400 whitespace-nowrap">
+                              {new Date(tx.date).toLocaleDateString('tr-TR')}
+                            </td>
+                            <td className="px-4 py-3 text-xs font-medium text-white">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span>{tx.description}</span>
+                                {isInst && (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] font-extrabold">
+                                    Taksit {tx.installmentNumber}/{tx.installmentCount}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-zinc-400 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-900 rounded-md text-[10px] font-bold text-zinc-300">
+                                <Tag className="w-3 h-3 text-zinc-500" />
+                                {counterpart}
+                              </span>
+                            </td>
+                            <td className={`px-4 py-3 text-xs font-black text-right whitespace-nowrap ${
+                              isIncoming ? 'text-emerald-400' : 'text-rose-400'
+                            }`}>
+                              {isIncoming ? '+' : '-'}{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
+                            </td>
+                            <td className="px-4 py-3 text-right space-x-1 whitespace-nowrap">
+                              {onEditTransaction && (
+                                <button
+                                  onClick={() => {
+                                    onEditTransaction(tx);
+                                    setSelectedAccount(null);
+                                  }}
+                                  className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                  title="Düzenle"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              )}
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`${tx.description} işlemini silmek istediğinize emin misiniz?`)) {
+                                    await deleteLedgerTransaction(householdId, tx.id);
+                                  }
+                                }}
+                                className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                title="Sil"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-12 text-center text-xs text-zinc-500">
+                          {accTxSearch ? 'Arama kriterlerinize uygun işlem bulunamadı.' : 'Bu hesaba ait henüz işlem bulunmuyor.'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Account Deletion Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirmAccount && (
+          <div 
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+            onClick={() => setDeleteConfirmAccount(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="corporate-card w-full max-w-md p-6 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-5 text-center shadow-2xl"
+            >
+              <div className="w-14 h-14 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-2xl flex items-center justify-center mx-auto">
+                <AlertCircle className="w-7 h-7" />
+              </div>
+
+              <div>
+                <h3 className="text-xl font-black text-white">Hesabı Sil</h3>
+                <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                  <strong className="text-white">{deleteConfirmAccount.name}</strong> hesabını silmek istediğinizden emin misiniz?
+                  <br />
+                  Bu işlem hesabı listenizden kaldırır. Hesaba bağlı geçmiş harcama ve gelir kayıtları korunmaya devam eder.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={() => setDeleteConfirmAccount(null)}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold rounded-2xl text-xs transition-colors border border-zinc-800"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-2xl text-xs transition-all shadow-lg shadow-rose-600/20 disabled:opacity-50"
+                >
+                  {isDeleting ? 'Siliniyor...' : 'Evet, Hesabı Sil'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

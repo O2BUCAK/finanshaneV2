@@ -256,8 +256,36 @@ export async function updateAccount(
 ) {
   try {
     await localDB.accounts.update(accountId, { ...data });
+    if (householdId) {
+      const path = `households/${householdId}/accounts/${accountId}`;
+      try {
+        await setDoc(doc(db, path), data, { merge: true });
+      } catch (e) {
+        console.error("Error updating account in firestore:", e);
+      }
+    }
   } catch (error) {
     console.error('Update account error:', error);
+    throw error;
+  }
+}
+
+export async function deleteAccount(
+  householdId: string,
+  accountId: string
+) {
+  try {
+    await localDB.accounts.delete(accountId);
+    if (householdId) {
+      const path = `households/${householdId}/accounts/${accountId}`;
+      try {
+        await deleteDoc(doc(db, path));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.DELETE, path);
+      }
+    }
+  } catch (error) {
+    console.error('Delete account error:', error);
     throw error;
   }
 }
