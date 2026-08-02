@@ -8,6 +8,7 @@ import { motion, Reorder } from 'framer-motion';
 import { Account, Transaction, IncomeSource, ExpectedIncome, PlannedExpense } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { MarketDataWidget } from './MarketDataWidget';
+import { getCreditCardFutureDebt } from '../lib/ledger';
 
 interface DashboardProps {
   householdId?: string;
@@ -133,6 +134,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
     creditCardAccounts.reduce((sum, a) => sum + convertToTRY(a.balance, a.currency || 'TRY'), 0),
     [creditCardAccounts, convertToTRY]
   );
+
+  const totalFutureCreditCardDebt = useMemo(() => 
+    creditCardAccounts.reduce((sum, a) => {
+      const futureDebt = getCreditCardFutureDebt(a, allTransactions);
+      return sum + convertToTRY(Math.max(0, futureDebt), a.currency || 'TRY');
+    }, 0),
+    [creditCardAccounts, allTransactions, convertToTRY]
+  );
+
+  const totalCreditCardUsedLimit = totalCreditCardDebt + totalFutureCreditCardDebt;
 
   const totalCreditLimit = useMemo(() => 
     creditCardAccounts.reduce((sum, a) => sum + convertToTRY(a.creditLimit || 0, a.currency || 'TRY'), 0),
@@ -335,6 +346,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       case 'credit_cards':
         if (creditCardAccounts.length === 0) return null;
+        const availableLimitSum = totalCreditLimit - totalCreditCardUsedLimit;
+        const usageRatio = totalCreditLimit > 0 ? (totalCreditCardUsedLimit / totalCreditLimit) * 100 : 0;
+
         return (
           <div className="corporate-card p-8 relative group overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-rose-500/10 transition-colors duration-500" />
@@ -343,6 +357,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
                 <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Toplam Borç</p>
                 <p className="text-2xl font-black text-rose-500 tracking-tighter">{formatWithEquivalent(totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
+                {totalFutureCreditCardDebt > 0 && (
+                  <p className="text-[10px] font-bold text-amber-400 mt-1">
+                    + {formatWithEquivalent(totalFutureCreditCardDebt, 'TRY', isItemHidden('credit_cards'))} Gelecek Taksit
+                  </p>
+                )}
               </div>
               <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
                 <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Toplam Limit</p>
@@ -350,18 +369,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
                 <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Kullanılabilir Limit</p>
-                <p className="text-2xl font-black text-emerald-500 tracking-tighter">{formatWithEquivalent(totalCreditLimit - totalCreditCardDebt, 'TRY', isItemHidden('credit_cards'))}</p>
+                <p className={`text-2xl font-black tracking-tighter ${availableLimitSum >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  {formatWithEquivalent(availableLimitSum, 'TRY', isItemHidden('credit_cards'))}
+                </p>
               </div>
               <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
                 <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Limit Doluluk</p>
                 <div className="flex items-end gap-2">
                   <p className="text-2xl font-black text-foreground tracking-tighter">
-                    {totalCreditLimit > 0 ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format((totalCreditCardDebt / totalCreditLimit) * 100) : 0}%
+                    {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(usageRatio)}%
                   </p>
                   <div className="flex-1 h-2 bg-secondary rounded-full mb-1.5 overflow-hidden border border-border/50">
                     <div 
-                      className="h-full bg-rose-500 rounded-full shadow-sm" 
-                      style={{ width: `${Math.min((totalCreditCardDebt / (totalCreditLimit || 1)) * 100, 100)}%` }}
+                      className="h-full bg-rose-500 rounded-full shadow-sm transition-all duration-300" 
+                      style={{ width: `${Math.min(usageRatio, 100)}%` }}
                     />
                   </div>
                 </div>
@@ -369,25 +390,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-              {creditCardAccounts.map(acc => (
-                <div key={acc.id} className="p-4 rounded-xl bg-secondary/20 border border-border/50 flex justify-between items-center group/card hover:bg-secondary/40 transition-all">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center border border-rose-500/10 group-hover/card:scale-110 transition-transform">
-                      <CreditCard className="w-4 h-4 text-rose-500" />
+              {creditCardAccounts.map(acc => {
+                const cardFutureDebt = getCreditCardFutureDebt(acc, allTransactions);
+                const cardTotalUsed = acc.balance + Math.max(0, cardFutureDebt);
+                const cardAvailable = (acc.creditLimit || 0) - cardTotalUsed;
+
+                return (
+                  <div key={acc.id} className="p-4 rounded-xl bg-secondary/20 border border-border/50 flex justify-between items-center group/card hover:bg-secondary/40 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center border border-rose-500/10 group-hover/card:scale-110 transition-transform">
+                        <CreditCard className="w-4 h-4 text-rose-500" />
+                      </div>
+                      <div>
+                        <p className="font-black text-xs text-foreground tracking-tight">{acc.name}</p>
+                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest opacity-60">
+                          Kalan Limit: {formatWithEquivalent(cardAvailable, acc.currency || 'TRY', isItemHidden('credit_cards'))}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-black text-xs text-foreground tracking-tight">{acc.name}</p>
-                      <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest opacity-60">Kesim Günü: {acc.statementDay}</p>
+                    <div className="text-right">
+                      <p className="font-black text-base text-rose-500 tracking-tighter">{formatWithEquivalent(acc.balance, acc.currency || 'TRY', isItemHidden('credit_cards'))}</p>
+                      {cardFutureDebt > 0 ? (
+                        <p className="text-[9px] font-extrabold text-amber-400 uppercase tracking-widest">
+                          Gelecek Taksit: {formatWithEquivalent(cardFutureDebt, acc.currency || 'TRY', isItemHidden('credit_cards'))}
+                        </p>
+                      ) : (
+                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest opacity-60">
+                          Asgari: {formatWithEquivalent(acc.balance * ((acc.creditLimit || 0) >= 25000 ? 0.4 : 0.2), acc.currency || 'TRY', isItemHidden('credit_cards'))}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-black text-base text-rose-500 tracking-tighter">{formatWithEquivalent(acc.balance, acc.currency || 'TRY', isItemHidden('credit_cards'))}</p>
-                    <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest opacity-60">
-                      Asgari: {formatWithEquivalent(acc.balance * ((acc.creditLimit || 0) >= 25000 ? 0.4 : 0.2), acc.currency || 'TRY', isItemHidden('credit_cards'))}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );

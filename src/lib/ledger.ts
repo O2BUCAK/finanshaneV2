@@ -446,3 +446,28 @@ export async function syncAllAccountBalances(
     }
   }
 }
+
+/**
+ * Calculates future debt (future installments / payments with date > now) for a credit card account.
+ */
+export function getCreditCardFutureDebt(account: Account, transactions: Transaction[]): number {
+  if (account.subType !== 'credit_card' && account.type !== 'liability') return 0;
+  const now = new Date();
+
+  return transactions.reduce((sum, tx) => {
+    const txDate = tx.date instanceof Date 
+      ? tx.date 
+      : (tx.date as any)?.seconds 
+        ? new Date((tx.date as any).seconds * 1000) 
+        : new Date(tx.date);
+
+    if (isNaN(txDate.getTime()) || txDate <= now) return sum;
+
+    if (tx.creditAccountId === account.id) {
+      return sum + (tx.amount || 0);
+    } else if (tx.debitAccountId === account.id) {
+      return sum - (tx.amount || 0);
+    }
+    return sum;
+  }, 0);
+}

@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Account, Transaction } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { syncAccountWithApi } from '../lib/apiIntegrations';
-import { deleteLedgerTransaction } from '../lib/ledger';
+import { deleteLedgerTransaction, getCreditCardFutureDebt } from '../lib/ledger';
 import { ConfirmModal } from './ConfirmModal';
 
 interface AccountsViewProps {
@@ -488,22 +488,37 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     )}
                   </div>
 
-                  {account.subType === 'credit_card' && (
-                    <div className="mt-4 p-3 bg-zinc-950/40 rounded-2xl border border-border/50 space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-400 font-medium">Kalan Limit:</span>
-                        <span className="font-extrabold text-emerald-400">
-                          {formatWithEquivalent((account.creditLimit || 0) - account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
-                        </span>
+                  {account.subType === 'credit_card' && (() => {
+                    const futureDebt = getCreditCardFutureDebt(account, transactions);
+                    const totalUsedLimit = account.balance + Math.max(0, futureDebt);
+                    const remainingLimit = (account.creditLimit || 0) - totalUsedLimit;
+                    const usagePercentage = Math.min(100, Math.max(0, (totalUsedLimit / (account.creditLimit || 1)) * 100));
+
+                    return (
+                      <div className="mt-4 p-3 bg-zinc-950/40 rounded-2xl border border-border/50 space-y-2">
+                        {futureDebt > 0 && (
+                          <div className="flex justify-between items-center text-[11px] text-zinc-400">
+                            <span>Gelecek Taksitler:</span>
+                            <span className="font-bold text-amber-400">
+                              {formatWithEquivalent(futureDebt, account.currency || 'TRY', isAccountHidden(account.id))}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-zinc-400 font-medium">Kullanılabilir Limit:</span>
+                          <span className={`font-extrabold ${remainingLimit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                            {formatWithEquivalent(remainingLimit, account.currency || 'TRY', isAccountHidden(account.id))}
+                          </span>
+                        </div>
+                        <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className="bg-rose-500 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${usagePercentage}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
-                        <div 
-                          className="bg-rose-500 h-full rounded-full"
-                          style={{ width: `${Math.min(100, (account.balance / (account.creditLimit || 1)) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* Open Account Transactions Button Footer */}
@@ -698,39 +713,77 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               </div>
 
               {/* Stats Bar */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
-                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Güncel Bakiye</span>
-                  <span className={`text-lg font-black ${selectedAccount.subType === 'credit_card' ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {formatWithEquivalent(selectedAccount.balance, selectedAccount.currency || 'TRY')}
-                  </span>
-                </div>
+              {selectedAccount.subType === 'credit_card' ? (() => {
+                const selectedFutureDebt = getCreditCardFutureDebt(selectedAccount, transactions);
+                const selectedTotalDebt = selectedAccount.balance + Math.max(0, selectedFutureDebt);
+                const selectedAvailableLimit = (selectedAccount.creditLimit || 0) - selectedTotalDebt;
 
-                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider block flex items-center gap-1">
-                    <ArrowDownLeft className="w-3.5 h-3.5" /> Toplam Gelen (+)
-                  </span>
-                  <span className="text-lg font-black text-emerald-400">
-                    +{formatWithEquivalent(accTxStats.totalIncoming, selectedAccount.currency || 'TRY')}
-                  </span>
-                </div>
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+                    <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                      <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">Güncel Borç</span>
+                      <span className="text-lg font-black text-rose-400">
+                        {formatWithEquivalent(selectedAccount.balance, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
 
-                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
-                  <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> Toplam Giden (-)
-                  </span>
-                  <span className="text-lg font-black text-rose-400">
-                    -{formatWithEquivalent(accTxStats.totalOutgoing, selectedAccount.currency || 'TRY')}
-                  </span>
-                </div>
+                    <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Gelecek Taksitler</span>
+                      <span className="text-lg font-black text-amber-400">
+                        {formatWithEquivalent(selectedFutureDebt, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
 
-                <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Toplam İşlem</span>
-                  <span className="text-lg font-black text-foreground">
-                    {accTxStats.count} İşlem
-                  </span>
+                    <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Kart Limiti</span>
+                      <span className="text-lg font-black text-foreground">
+                        {formatWithEquivalent(selectedAccount.creditLimit || 0, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
+
+                    <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Kullanılabilir Limit</span>
+                      <span className={`text-lg font-black ${selectedAvailableLimit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                        {formatWithEquivalent(selectedAvailableLimit, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+                  <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Güncel Bakiye</span>
+                    <span className="text-lg font-black text-emerald-400">
+                      {formatWithEquivalent(selectedAccount.balance, selectedAccount.currency || 'TRY')}
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                    <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider block flex items-center gap-1">
+                      <ArrowDownLeft className="w-3.5 h-3.5" /> Toplam Gelen (+)
+                    </span>
+                    <span className="text-lg font-black text-emerald-400">
+                      +{formatWithEquivalent(accTxStats.totalIncoming, selectedAccount.currency || 'TRY')}
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                    <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block flex items-center gap-1">
+                      <ArrowUpRight className="w-3.5 h-3.5" /> Toplam Giden (-)
+                    </span>
+                    <span className="text-lg font-black text-rose-400">
+                      -{formatWithEquivalent(accTxStats.totalOutgoing, selectedAccount.currency || 'TRY')}
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Toplam İşlem</span>
+                    <span className="text-lg font-black text-foreground">
+                      {accTxStats.count} İşlem
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Controls: Filter & Search */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
