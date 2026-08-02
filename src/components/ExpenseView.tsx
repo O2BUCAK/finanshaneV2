@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { 
   TrendingDown, Plus, Calendar, ArrowDownLeft, 
   Clock, Wallet, Briefcase, Target, CreditCard, Tag, Trash2, Pencil,
-  Check, X, AlertCircle
+  Check, X, AlertCircle, ChevronDown, ChevronUp, Layers, Filter
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { PlannedExpense, Account, Transaction, Category, ExpectedExpense } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { SubscriptionsView } from './SubscriptionsView';
@@ -54,6 +54,10 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteConfirmTitle, setDeleteConfirmTitle] = useState<string>('');
   const [deleteConfirmMessage, setDeleteConfirmMessage] = useState<string>('');
+
+  const [expandedInstallmentKey, setExpandedInstallmentKey] = useState<string | null>(null);
+  const [txFilter, setTxFilter] = useState<'all' | 'single' | 'installment'>('all');
+  const [showAllTx, setShowAllTx] = useState<boolean>(false);
 
   const totalPlanned = useMemo(() => {
     const planned = plannedExpenses.reduce((sum, exp) => sum + convertToTRY(exp.amount, exp.currency), 0);
@@ -153,13 +157,93 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
     }
   };
 
-  const expenseTransactions = transactions.filter(tx => {
-    const debitAcc = categories.find(a => a.id === tx.debitAccountId || a.id === tx.categoryId) || accounts.find(a => a.id === tx.debitAccountId);
-    const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
-    if (debitAcc?.type === 'expense') return true;
-    if (creditAcc && debitAcc?.type !== 'income') return true;
-    return false;
-  });
+  const expenseTransactions = useMemo(() => {
+    return transactions.filter(tx => {
+      const debitAcc = categories.find(a => a.id === tx.debitAccountId || a.id === tx.categoryId) || accounts.find(a => a.id === tx.debitAccountId);
+      const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
+      if (tx.isInstallment || (tx.installmentCount && tx.installmentCount > 1)) return true;
+      if (debitAcc?.type === 'expense') return true;
+      if (creditAcc && debitAcc?.type !== 'income') return true;
+      return false;
+    });
+  }, [transactions, categories, accounts]);
+
+  const filteredExpenseTransactions = useMemo(() => {
+    return expenseTransactions.filter(tx => {
+      const isInst = tx.isInstallment || (tx.installmentCount && tx.installmentCount > 1);
+      if (txFilter === 'single') return !isInst;
+      if (txFilter === 'installment') return isInst;
+      return true;
+    });
+  }, [expenseTransactions, txFilter]);
+
+  const installmentGroups = useMemo(() => {
+    const groupsMap = new Map<string, {
+      key: string;
+      description: string;
+      categoryId: string;
+      creditAccountId: string;
+      debitAccountId: string;
+      monthlyAmount: number;
+      currency: string;
+      installmentCount: number;
+      installments: Transaction[];
+      parentTransactionId?: string;
+    }>();
+
+    transactions.forEach(tx => {
+      if (tx.isInstallment || (tx.installmentCount && tx.installmentCount > 1)) {
+        const key = tx.parentTransactionId || `${tx.description}-${tx.installmentCount}-${tx.amount}`;
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, {
+            key,
+            description: tx.description,
+            categoryId: tx.categoryId,
+            creditAccountId: tx.creditAccountId,
+            debitAccountId: tx.debitAccountId,
+            monthlyAmount: tx.amount,
+            currency: tx.currency || 'TRY',
+            installmentCount: tx.installmentCount || 1,
+            installments: [],
+            parentTransactionId: tx.parentTransactionId
+          });
+        }
+        groupsMap.get(key)!.installments.push(tx);
+      }
+    });
+
+    const now = new Date();
+    return Array.from(groupsMap.values()).map(group => {
+      const sortedInstallments = [...group.installments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const paidInstallments = sortedInstallments.filter(t => new Date(t.date) <= now);
+      const futureInstallments = sortedInstallments.filter(t => new Date(t.date) > now);
+      
+      const paidCount = paidInstallments.length > 0 ? Math.min(group.installmentCount, paidInstallments.length) : (sortedInstallments[0] && new Date(sortedInstallments[0].date) <= now ? 1 : 0);
+      const remainingCount = Math.max(0, group.installmentCount - paidCount);
+      const totalAmount = group.monthlyAmount * group.installmentCount;
+      const remainingAmount = group.monthlyAmount * remainingCount;
+      const paidAmount = totalAmount - remainingAmount;
+      const progress = group.installmentCount > 0 ? (paidCount / group.installmentCount) * 100 : 0;
+      const nextInstallment = futureInstallments[0] || sortedInstallments[sortedInstallments.length - 1];
+
+      const category = categories.find(c => c.id === group.categoryId || c.id === group.debitAccountId);
+      const creditAccount = accounts.find(a => a.id === group.creditAccountId);
+
+      return {
+        ...group,
+        installments: sortedInstallments,
+        paidCount,
+        remainingCount,
+        totalAmount,
+        paidAmount,
+        remainingAmount,
+        progress,
+        nextInstallmentDate: nextInstallment ? new Date(nextInstallment.date) : null,
+        categoryName: category?.name || 'Gider',
+        accountName: creditAccount?.name || 'Kredi Kartı / Hesap'
+      };
+    });
+  }, [transactions, categories, accounts]);
 
   return (
     <div className="space-y-6 pb-8">
@@ -347,6 +431,154 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
         />
       </div>
 
+      {/* Taksitli Harcamalar (Taksit Takibi) */}
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-indigo-500" />
+            Taksitli Harcamalar (Taksit Takibi)
+          </h2>
+          {installmentGroups.length > 0 && (
+            <span className="text-xs font-bold px-3 py-1 bg-indigo-500/10 text-indigo-400 rounded-full border border-indigo-500/20">
+              {installmentGroups.length} Aktif Taksitli Harcama
+            </span>
+          )}
+        </div>
+
+        {installmentGroups.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {installmentGroups.map(group => {
+              const isExpanded = expandedInstallmentKey === group.key;
+
+              return (
+                <div key={group.key} className="corporate-card p-6 bg-zinc-950/50 border border-zinc-800/80 rounded-3xl space-y-4 relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-wider">
+                          {group.paidCount}/{group.installmentCount} Taksit
+                        </span>
+                        <span className="text-xs text-zinc-400 font-medium">{group.categoryName}</span>
+                      </div>
+                      <h3 className="text-lg font-extrabold text-foreground mt-1.5">{group.description}</h3>
+                      <p className="text-xs text-zinc-500 font-medium">{group.accountName}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Aylık Taksit</div>
+                      <div className="text-xl font-black text-rose-400">{formatWithEquivalent(group.monthlyAmount, group.currency)}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 p-3 bg-zinc-900/60 rounded-2xl text-center border border-zinc-800/50">
+                    <div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase block">Toplam Tutar</span>
+                      <span className="text-xs font-extrabold text-foreground">{formatWithEquivalent(group.totalAmount, group.currency)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase block">Ödenen</span>
+                      <span className="text-xs font-extrabold text-emerald-400">{formatWithEquivalent(group.paidAmount, group.currency)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase block">Kalan Borç</span>
+                      <span className="text-xs font-extrabold text-amber-400">{formatWithEquivalent(group.remainingAmount, group.currency)}</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-medium">
+                      <span className="text-zinc-400">Taksit İlerlemesi</span>
+                      <span className="text-indigo-400 font-bold">
+                        {group.paidCount} / {group.installmentCount} Ödendi ({group.remainingCount} Kalan)
+                      </span>
+                    </div>
+                    <div className="w-full bg-zinc-900 rounded-full h-2.5 overflow-hidden">
+                      <div 
+                        className="bg-indigo-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, group.progress)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {group.nextInstallmentDate && (
+                    <div className="flex items-center justify-between pt-1 text-xs text-zinc-400 border-t border-zinc-900">
+                      <span>Gelecek / Son Taksit Vadesi:</span>
+                      <span className="font-bold text-zinc-200">
+                        {group.nextInstallmentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </span>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setExpandedInstallmentKey(isExpanded ? null : group.key)}
+                    className="w-full py-2 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors border border-zinc-800/60"
+                  >
+                    {isExpanded ? (
+                      <>
+                        <ChevronUp className="w-4 h-4" /> Taksit Detaylarını Gizle
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4" /> Tüm Taksit Vadelerini Gör ({group.installmentCount} Taksit)
+                      </>
+                    )}
+                  </button>
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden space-y-2 pt-2 border-t border-zinc-800"
+                      >
+                        <div className="text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Taksit Planı</div>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                          {group.installments.map((instTx) => {
+                            const instDate = new Date(instTx.date);
+                            const isPast = instDate <= new Date();
+                            return (
+                              <div 
+                                key={instTx.id} 
+                                className={`flex justify-between items-center p-2.5 rounded-xl text-xs border ${
+                                  isPast ? 'bg-zinc-900/40 border-zinc-900 text-zinc-400' : 'bg-indigo-500/5 border-indigo-500/20 text-zinc-200'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-2 h-2 rounded-full ${isPast ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
+                                  <span className="font-bold">{instTx.installmentNumber}. Taksit:</span>
+                                  <span>{instDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-extrabold">{formatWithEquivalent(instTx.amount, instTx.currency || 'TRY')}</span>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                    isPast ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                                  }`}>
+                                    {isPast ? 'İşlendi' : 'Bekliyor'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-8 text-center bg-zinc-950/40 border border-dashed border-zinc-900 rounded-3xl space-y-2">
+            <CreditCard className="w-8 h-8 text-zinc-600 mx-auto mb-1" />
+            <p className="text-sm font-semibold text-muted-foreground">Aktif taksitli harcama kaydınız bulunmuyor.</p>
+            <p className="text-xs text-zinc-500 max-w-md mx-auto">
+              Yeni bir harcama eklerken "Taksitli İşlem" seçeneğini açarak taksit sayısı belirleyebilirsiniz. Taksitler otomatik olarak aylara bölünüp burada takip edilir.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Abonelikler */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -368,10 +600,39 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
 
       {/* Son Harcamalar */}
       <div className="space-y-4">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <ArrowDownLeft className="w-5 h-5 text-rose-500" />
-          Son Harcamalar
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <ArrowDownLeft className="w-5 h-5 text-rose-500" />
+            Son Harcamalar
+          </h2>
+          <div className="flex items-center gap-1.5 bg-zinc-900/80 p-1 rounded-2xl border border-zinc-800 self-start">
+            <button
+              onClick={() => setTxFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                txFilter === 'all' ? 'bg-rose-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              Tümü ({expenseTransactions.length})
+            </button>
+            <button
+              onClick={() => setTxFilter('single')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                txFilter === 'single' ? 'bg-rose-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              Tek Çekim
+            </button>
+            <button
+              onClick={() => setTxFilter('installment')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                txFilter === 'installment' ? 'bg-indigo-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              Taksitli
+            </button>
+          </div>
+        </div>
+
         <div className="corporate-card overflow-hidden">
           <table className="w-full text-left">
             <thead>
@@ -384,52 +645,87 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {expenseTransactions.slice(0, 10).map(tx => {
-                const category = categories.find(c => c.id === tx.categoryId);
-                return (
-                  <tr key={tx.id} className="hover:bg-zinc-800/50 transition-colors group">
-                    <td className="px-6 py-4 text-sm text-zinc-400">
-                      {new Date(tx.date).toLocaleDateString('tr-TR')}
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium text-white">
-                      {tx.description}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-zinc-400">
-                      <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 rounded-lg text-[10px] font-bold text-zinc-300 uppercase tracking-wider">
-                        <Tag className="w-3 h-3" />
-                        {category?.name || 'Diğer'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-bold text-rose-500 text-right">
-                      -{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-1">
-                      {onEditTransaction && (
+              {filteredExpenseTransactions.length > 0 ? (
+                (showAllTx ? filteredExpenseTransactions : filteredExpenseTransactions.slice(0, 10)).map(tx => {
+                  const category = categories.find(c => c.id === tx.categoryId || c.id === tx.debitAccountId);
+                  const isInst = tx.isInstallment || (tx.installmentCount && tx.installmentCount > 1);
+                  const totalInstAmount = isInst && tx.installmentCount ? tx.amount * tx.installmentCount : tx.amount;
+                  const remainingInst = isInst && tx.installmentCount && tx.installmentNumber ? tx.installmentCount - tx.installmentNumber : 0;
+
+                  return (
+                    <tr key={tx.id} className="hover:bg-zinc-800/50 transition-colors group">
+                      <td className="px-6 py-4 text-sm text-zinc-400 whitespace-nowrap">
+                        {new Date(tx.date).toLocaleDateString('tr-TR')}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-white">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>{tx.description}</span>
+                          {isInst && (
+                            <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] font-extrabold">
+                              Taksit {tx.installmentNumber}/{tx.installmentCount}
+                            </span>
+                          )}
+                        </div>
+                        {isInst && (
+                          <div className="text-[11px] text-zinc-400 mt-0.5">
+                            Aylık: <span className="font-bold text-zinc-300">{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}</span> | Toplam: <span className="font-bold text-zinc-300">{formatWithEquivalent(totalInstAmount, tx.currency || 'TRY')}</span> ({remainingInst} taksit kaldı)
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-zinc-400 whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 rounded-lg text-[10px] font-bold text-zinc-300 uppercase tracking-wider">
+                          <Tag className="w-3 h-3" />
+                          {category?.name || 'Gider'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-bold text-rose-500 text-right whitespace-nowrap">
+                        -{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-1 whitespace-nowrap">
+                        {onEditTransaction && (
+                          <button 
+                            onClick={() => onEditTransaction(tx)}
+                            className="p-1.5 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                            title="Düzenle"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button 
-                          onClick={() => onEditTransaction(tx)}
-                          className="p-1.5 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                          title="Düzenle"
+                          onClick={() => {
+                            setDeleteConfirmId(tx.id);
+                            setDeleteConfirmTitle('İşlemi Sil');
+                            setDeleteConfirmMessage(`${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`);
+                          }}
+                          className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                          title="Sil"
                         >
-                          <Pencil className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                      <button 
-                        onClick={() => {
-                          setDeleteConfirmId(tx.id);
-                          setDeleteConfirmTitle('İşlemi Sil');
-                          setDeleteConfirmMessage(`${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`);
-                        }}
-                        className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                        title="Sil"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-sm text-zinc-500">
+                    Seçilen filtreye uygun harcama kaydı bulunamadı.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+
+          {filteredExpenseTransactions.length > 10 && (
+            <div className="p-4 border-t border-zinc-800 text-center bg-zinc-950/30">
+              <button
+                onClick={() => setShowAllTx(!showAllTx)}
+                className="text-xs font-bold text-zinc-400 hover:text-white transition-colors py-1 px-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700"
+              >
+                {showAllTx ? 'Daha Az Göster (İlk 10)' : `Tüm Harcamaları Göster (${filteredExpenseTransactions.length} Kayıt)`}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

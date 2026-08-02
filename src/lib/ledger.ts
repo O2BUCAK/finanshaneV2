@@ -117,6 +117,15 @@ export async function createInstallmentTransactions(
 
         await localDB.transactions.add(newTx);
 
+        if (householdId) {
+          const path = `households/${householdId}/transactions/${id}`;
+          try {
+            await setDoc(doc(db, path), newTx);
+          } catch (e) {
+            handleFirestoreError(e, OperationType.WRITE, path);
+          }
+        }
+
         if (installmentDate <= now) {
           currentDebitBalance = updateBalance({ ...debitAccount, balance: currentDebitBalance }, installmentAmount, true);
           currentCreditBalance = updateBalance({ ...creditAccount, balance: currentCreditBalance }, installmentAmount, false);
@@ -125,6 +134,15 @@ export async function createInstallmentTransactions(
 
       await localDB.accounts.update(txData.debitAccountId, { balance: currentDebitBalance });
       await localDB.accounts.update(txData.creditAccountId, { balance: currentCreditBalance });
+
+      if (householdId) {
+        try {
+          await setDoc(doc(db, `households/${householdId}/accounts/${txData.debitAccountId}`), { balance: currentDebitBalance }, { merge: true });
+          await setDoc(doc(db, `households/${householdId}/accounts/${txData.creditAccountId}`), { balance: currentCreditBalance }, { merge: true });
+        } catch (e) {
+          console.error("Error updating account balance in firestore:", e);
+        }
+      }
       
       return parentId;
     });
