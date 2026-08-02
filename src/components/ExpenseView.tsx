@@ -2,14 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { 
   TrendingDown, Plus, Calendar, ArrowDownLeft, 
   Clock, Wallet, Briefcase, Target, CreditCard, Tag, Trash2, Pencil,
-  Check, X, AlertCircle, ChevronDown, ChevronUp, Layers, Filter
+  Check, X, AlertCircle, ChevronDown, ChevronUp, Layers, Filter,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlannedExpense, Account, Transaction, Category, ExpectedExpense } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { SubscriptionsView } from './SubscriptionsView';
 import { PlannedExpenses } from './PlannedExpenses';
-import { deleteLedgerTransaction, createLedgerTransaction } from '../lib/ledger';
+import { deleteLedgerTransaction, createLedgerTransaction, deleteInstallmentGroup } from '../lib/ledger';
 import { updateExpectedExpense, createExpectedExpense } from '../lib/expenseSources';
 import { useAuth } from '../hooks/useAuth';
 import { ConfirmModal } from './ConfirmModal';
@@ -51,13 +52,40 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
 }) => {
   const { user } = useAuth();
   const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [deleteConfirmTitle, setDeleteConfirmTitle] = useState<string>('');
-  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState<string>('');
+  
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    isInstallmentGroup?: boolean;
+    parentTransactionId?: string;
+    title: string;
+    message: string;
+  } | null>(null);
 
   const [expandedInstallmentKey, setExpandedInstallmentKey] = useState<string | null>(null);
   const [txFilter, setTxFilter] = useState<'all' | 'single' | 'installment'>('all');
+  const [txSortField, setTxSortField] = useState<'date' | 'description' | 'category' | 'amount'>('date');
+  const [txSortOrder, setTxSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [expectedSortField, setExpectedSortField] = useState<'date' | 'title' | 'category' | 'amount'>('date');
+  const [expectedExpenseSortOrder, setExpectedExpenseSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showAllTx, setShowAllTx] = useState<boolean>(false);
+
+  const toggleTxSort = (field: 'date' | 'description' | 'category' | 'amount') => {
+    if (txSortField === field) {
+      setTxSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setTxSortField(field);
+      setTxSortOrder(field === 'description' || field === 'category' ? 'asc' : 'desc');
+    }
+  };
+
+  const toggleExpectedSort = (field: 'date' | 'title' | 'category' | 'amount') => {
+    if (expectedSortField === field) {
+      setExpectedExpenseSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setExpectedSortField(field);
+      setExpectedExpenseSortOrder(field === 'title' || field === 'category' ? 'asc' : 'desc');
+    }
+  };
 
   const totalPlanned = useMemo(() => {
     const planned = plannedExpenses.reduce((sum, exp) => sum + convertToTRY(exp.amount, exp.currency), 0);
@@ -149,11 +177,18 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
     }
   };
 
-  const handleDeleteTransaction = async (id: string) => {
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
     try {
-      await deleteLedgerTransaction(householdId, id);
+      if (deleteConfirm.isInstallmentGroup && deleteConfirm.parentTransactionId) {
+        await deleteInstallmentGroup(householdId, deleteConfirm.parentTransactionId);
+      } else {
+        await deleteLedgerTransaction(householdId, deleteConfirm.id);
+      }
     } catch (error) {
       console.error('Error deleting transaction:', error);
+    } finally {
+      setDeleteConfirm(null);
     }
   };
 
@@ -169,13 +204,41 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
   }, [transactions, categories, accounts]);
 
   const filteredExpenseTransactions = useMemo(() => {
-    return expenseTransactions.filter(tx => {
+    const list = expenseTransactions.filter(tx => {
       const isInst = tx.isInstallment || (tx.installmentCount && tx.installmentCount > 1);
       if (txFilter === 'single') return !isInst;
       if (txFilter === 'installment') return isInst;
       return true;
     });
-  }, [expenseTransactions, txFilter]);
+
+    return [...list].sort((a, b) => {
+      let diff = 0;
+      if (txSortField === 'date') {
+        const getTime = (d: any) => {
+          if (!d) return 0;
+          if (d instanceof Date) return d.getTime();
+          if (typeof d === 'number') return d;
+          if (d?.seconds) return d.seconds * 1000;
+          const parsed = new Date(d).getTime();
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        diff = getTime(a.date) - getTime(b.date);
+      } else if (txSortField === 'description') {
+        diff = (a.description || '').localeCompare(b.description || '', 'tr');
+      } else if (txSortField === 'category') {
+        const catA = categories.find(c => c.id === a.categoryId || c.id === a.debitAccountId)?.name || '';
+        const catB = categories.find(c => c.id === b.categoryId || c.id === b.debitAccountId)?.name || '';
+        diff = catA.localeCompare(catB, 'tr');
+      } else if (txSortField === 'amount') {
+        const isInstA = a.isInstallment || (a.installmentCount && a.installmentCount > 1);
+        const amountA = isInstA && a.installmentCount ? a.amount * a.installmentCount : a.amount;
+        const isInstB = b.isInstallment || (b.installmentCount && b.installmentCount > 1);
+        const amountB = isInstB && b.installmentCount ? b.amount * b.installmentCount : b.amount;
+        diff = amountA - amountB;
+      }
+      return txSortOrder === 'asc' ? diff : -diff;
+    });
+  }, [expenseTransactions, txFilter, txSortField, txSortOrder, categories]);
 
   const installmentGroups = useMemo(() => {
     const groupsMap = new Map<string, {
@@ -321,10 +384,62 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-zinc-900 bg-secondary/30">
-                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Vade</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Tanım</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kategori</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Miktar</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      <button 
+                        onClick={() => toggleExpectedSort('date')}
+                        className="flex items-center gap-1.5 hover:text-amber-400 transition-colors"
+                        title="Vadeye göre sırala"
+                      >
+                        Vade
+                        {expectedSortField === 'date' ? (
+                          expectedExpenseSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-400" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      <button 
+                        onClick={() => toggleExpectedSort('title')}
+                        className="flex items-center gap-1.5 hover:text-amber-400 transition-colors"
+                        title="Tanıma göre sırala"
+                      >
+                        Tanım
+                        {expectedSortField === 'title' ? (
+                          expectedExpenseSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-400" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      <button 
+                        onClick={() => toggleExpectedSort('category')}
+                        className="flex items-center gap-1.5 hover:text-amber-400 transition-colors"
+                        title="Kategoriye göre sırala"
+                      >
+                        Kategori
+                        {expectedSortField === 'category' ? (
+                          expectedExpenseSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-400" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">
+                      <button 
+                        onClick={() => toggleExpectedSort('amount')}
+                        className="flex items-center gap-1.5 ml-auto hover:text-amber-400 transition-colors"
+                        title="Miktara göre sırala"
+                      >
+                        Miktar
+                        {expectedSortField === 'amount' ? (
+                          expectedExpenseSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-400" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                        )}
+                      </button>
+                    </th>
                     <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">İşlemler</th>
                   </tr>
                 </thead>
@@ -332,9 +447,21 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                   {expectedExpenses
                     .filter(ee => ee.status === 'pending')
                     .sort((a, b) => {
-                      const dateA = a.expectedDate instanceof Date ? a.expectedDate : (a.expectedDate as any)?.seconds ? new Date((a.expectedDate as any).seconds * 1000) : new Date(a.expectedDate);
-                      const dateB = b.expectedDate instanceof Date ? b.expectedDate : (b.expectedDate as any)?.seconds ? new Date((b.expectedDate as any).seconds * 1000) : new Date(b.expectedDate);
-                      return dateA.getTime() - dateB.getTime();
+                      let diff = 0;
+                      if (expectedSortField === 'date') {
+                        const dateA = a.expectedDate instanceof Date ? a.expectedDate : (a.expectedDate as any)?.seconds ? new Date((a.expectedDate as any).seconds * 1000) : new Date(a.expectedDate);
+                        const dateB = b.expectedDate instanceof Date ? b.expectedDate : (b.expectedDate as any)?.seconds ? new Date((b.expectedDate as any).seconds * 1000) : new Date(b.expectedDate);
+                        diff = dateA.getTime() - dateB.getTime();
+                      } else if (expectedSortField === 'title') {
+                        diff = (a.sourceName || '').localeCompare(b.sourceName || '', 'tr');
+                      } else if (expectedSortField === 'category') {
+                        const catA = categories.find(c => c.id === a.categoryId)?.name || '';
+                        const catB = categories.find(c => c.id === b.categoryId)?.name || '';
+                        diff = catA.localeCompare(catB, 'tr');
+                      } else if (expectedSortField === 'amount') {
+                        diff = a.amount - b.amount;
+                      }
+                      return expectedExpenseSortOrder === 'asc' ? diff : -diff;
                     })
                     .map(ee => {
                       const category = categories.find(c => c.id === ee.categoryId);
@@ -463,9 +590,24 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                       <h3 className="text-lg font-extrabold text-foreground mt-1.5">{group.description}</h3>
                       <p className="text-xs text-zinc-500 font-medium">{group.accountName}</p>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Aylık Taksit</div>
-                      <div className="text-xl font-black text-rose-400">{formatWithEquivalent(group.monthlyAmount, group.currency)}</div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Aylık Taksit</div>
+                        <div className="text-xl font-black text-rose-400">{formatWithEquivalent(group.monthlyAmount, group.currency)}</div>
+                      </div>
+                      <button 
+                        onClick={() => setDeleteConfirm({
+                          id: group.installments[0]?.id || group.key,
+                          isInstallmentGroup: true,
+                          parentTransactionId: group.parentTransactionId || group.installments[0]?.parentTransactionId || group.installments[0]?.id,
+                          title: 'Taksitli Harcamayı Sil',
+                          message: `${group.description} taksit planındaki tüm (${group.installmentCount}) taksiti silmek istediğinizden emin misiniz?`
+                        })}
+                        className="p-2 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all border border-zinc-800/80 bg-zinc-900/60"
+                        title="Tüm Taksit Grubunu Sil"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
@@ -549,13 +691,25 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                                   <span className="font-bold">{instTx.installmentNumber}. Taksit:</span>
                                   <span>{instDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
                                   <span className="font-extrabold">{formatWithEquivalent(instTx.amount, instTx.currency || 'TRY')}</span>
                                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                                     isPast ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
                                   }`}>
                                     {isPast ? 'İşlendi' : 'Bekliyor'}
                                   </span>
+                                  <button 
+                                    onClick={() => setDeleteConfirm({
+                                      id: instTx.id,
+                                      isInstallmentGroup: false,
+                                      title: 'Taksit Sil',
+                                      message: `${instTx.description} (${instTx.installmentNumber}. taksit) işlemini silmek istediğinizden emin misiniz?`
+                                    })}
+                                    className="p-1 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all border border-zinc-800/60"
+                                    title="Bu Taksiti Sil"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
                                 </div>
                               </div>
                             );
@@ -637,11 +791,63 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-zinc-800">
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Tarih</th>
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Açıklama</th>
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Kategori</th>
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Tutar</th>
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right w-10"></th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                  <button 
+                    onClick={() => toggleTxSort('date')}
+                    className="flex items-center gap-1.5 hover:text-rose-400 transition-colors"
+                    title="Tarihe göre sırala"
+                  >
+                    Tarih
+                    {txSortField === 'date' ? (
+                      txSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-rose-400" /> : <ArrowUp className="w-3.5 h-3.5 text-rose-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                  <button 
+                    onClick={() => toggleTxSort('description')}
+                    className="flex items-center gap-1.5 hover:text-rose-400 transition-colors"
+                    title="Açıklamaya göre sırala"
+                  >
+                    Açıklama
+                    {txSortField === 'description' ? (
+                      txSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-rose-400" /> : <ArrowUp className="w-3.5 h-3.5 text-rose-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                  <button 
+                    onClick={() => toggleTxSort('category')}
+                    className="flex items-center gap-1.5 hover:text-rose-400 transition-colors"
+                    title="Kategoriye göre sırala"
+                  >
+                    Kategori
+                    {txSortField === 'category' ? (
+                      txSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-rose-400" /> : <ArrowUp className="w-3.5 h-3.5 text-rose-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">
+                  <button 
+                    onClick={() => toggleTxSort('amount')}
+                    className="flex items-center gap-1.5 ml-auto hover:text-rose-400 transition-colors"
+                    title="Tutara göre sırala"
+                  >
+                    Tutar
+                    {txSortField === 'amount' ? (
+                      txSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-rose-400" /> : <ArrowUp className="w-3.5 h-3.5 text-rose-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right w-16">İşlem</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
@@ -685,7 +891,7 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                         {onEditTransaction && (
                           <button 
                             onClick={() => onEditTransaction(tx)}
-                            className="p-1.5 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                            className="p-1.5 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all border border-zinc-800/60 bg-zinc-900/40"
                             title="Düzenle"
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -693,11 +899,18 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                         )}
                         <button 
                           onClick={() => {
-                            setDeleteConfirmId(tx.id);
-                            setDeleteConfirmTitle('İşlemi Sil');
-                            setDeleteConfirmMessage(`${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`);
+                            const isInstGroup = (tx.isInstallment || (tx.installmentCount && tx.installmentCount > 1)) && (tx.installmentNumber === 1 || !tx.installmentNumber);
+                            setDeleteConfirm({
+                              id: tx.id,
+                              isInstallmentGroup: isInstGroup,
+                              parentTransactionId: tx.parentTransactionId || tx.id,
+                              title: isInstGroup ? 'Taksitli Harcamayı Sil' : 'İşlemi Sil',
+                              message: isInstGroup 
+                                ? `${tx.description} taksitli harcamasını ve bağlı tüm taksitlerini silmek istediğinizden emin misiniz?`
+                                : `${tx.description} harcamasını silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de güncelleyecektir.`
+                            });
                           }}
-                          className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all border border-zinc-800/60 bg-zinc-900/40"
                           title="Sil"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -730,13 +943,11 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
       </div>
 
       <ConfirmModal 
-        isOpen={!!deleteConfirmId}
-        onClose={() => setDeleteConfirmId(null)}
-        onConfirm={() => {
-          if (deleteConfirmId) handleDeleteTransaction(deleteConfirmId);
-        }}
-        title={deleteConfirmTitle}
-        message={deleteConfirmMessage}
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleConfirmDelete}
+        title={deleteConfirm?.title || ''}
+        message={deleteConfirm?.message || ''}
       />
     </div>
   );

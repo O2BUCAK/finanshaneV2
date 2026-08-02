@@ -70,7 +70,7 @@ import { useCollection } from './hooks/useFirestore';
 import { useExchangeRates } from './hooks/useExchangeRates';
 import { useAssetPrices } from './hooks/useAssetPrices';
 import { createIncomeSource, updateIncomeSource, updateExpectedIncome, createExpectedIncome, calculateMonthlyAmountFromDailyRate } from './lib/incomeSources';
-import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, deleteAccount, createInstallmentTransactions } from './lib/ledger';
+import { createLedgerTransaction, deleteLedgerTransaction, updateLedgerTransaction, updateAccount, deleteAccount, createInstallmentTransactions, syncAllAccountBalances } from './lib/ledger';
 import { createExpenseSource, updateExpenseSource, deleteExpenseSource } from './lib/expenseSources';
 import { createPlannedExpense, updatePlannedExpense, deletePlannedExpense } from './lib/plannedExpenses';
 import { Account, Category, Transaction, AccountBranch, AccountSubType, IncomeSource, ExpectedIncome, IncomeFlowType, IncomeCalculationType, PlannedExpense, Household, UserProfile, ExpenseSource, ExpenseFlowType, ExpectedExpense } from './types';
@@ -3259,6 +3259,12 @@ const Dashboard = () => {
       setHasUnreadNotifications(true);
     }
   }, [notifications.length]);
+
+  useEffect(() => {
+    if (household?.id && accounts.length > 0 && transactions.length > 0) {
+      syncAllAccountBalances(household.id, accounts, transactions);
+    }
+  }, [household?.id, accounts, transactions]);
 
   const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
 

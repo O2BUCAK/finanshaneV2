@@ -4,13 +4,14 @@ import {
   Plus, Search, ChevronRight, AlertCircle, CheckCircle2,
   ExternalLink, Settings2, Eye, EyeOff, TrendingUp, TrendingDown,
   LayoutGrid, List as ListIcon, Trash2, Pencil, X, ArrowUpRight, ArrowDownLeft,
-  Filter, Tag, Calendar, CreditCard, Layers
+  Filter, Tag, Calendar, CreditCard, Layers, ArrowDown, ArrowUp, ArrowUpDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Account, Transaction } from '../types';
 import { useExchangeRates } from '../hooks/useExchangeRates';
 import { syncAccountWithApi } from '../lib/apiIntegrations';
 import { deleteLedgerTransaction } from '../lib/ledger';
+import { ConfirmModal } from './ConfirmModal';
 
 interface AccountsViewProps {
   householdId: string;
@@ -47,9 +48,21 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   // Detail Modal & Account Deletion State
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [deleteConfirmAccount, setDeleteConfirmAccount] = useState<Account | null>(null);
+  const [deleteConfirmTx, setDeleteConfirmTx] = useState<Transaction | null>(null);
   const [accTxFilter, setAccTxFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
   const [accTxSearch, setAccTxSearch] = useState('');
+  const [accTxSortField, setAccTxSortField] = useState<'date' | 'description' | 'category' | 'amount'>('date');
+  const [accTxSortOrder, setAccTxSortOrder] = useState<'desc' | 'asc'>('desc');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const toggleAccTxSort = (field: 'date' | 'description' | 'category' | 'amount') => {
+    if (accTxSortField === field) {
+      setAccTxSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setAccTxSortField(field);
+      setAccTxSortOrder(field === 'description' || field === 'category' ? 'asc' : 'desc');
+    }
+  };
 
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
 
@@ -223,7 +236,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const filteredAccountTxs = useMemo(() => {
     if (!selectedAccount) return [];
-    return selectedAccountTxs.filter(tx => {
+    const list = selectedAccountTxs.filter(tx => {
       const dir = getTxDirection(tx, selectedAccount);
       if (accTxFilter === 'incoming' && dir !== 'incoming') return false;
       if (accTxFilter === 'outgoing' && dir !== 'outgoing') return false;
@@ -237,7 +250,33 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
       return true;
     });
-  }, [selectedAccountTxs, selectedAccount, accTxFilter, accTxSearch]);
+
+    return [...list].sort((a, b) => {
+      let diff = 0;
+      if (accTxSortField === 'date') {
+        const getTime = (d: any) => {
+          if (!d) return 0;
+          if (d instanceof Date) return d.getTime();
+          if (typeof d === 'number') return d;
+          if (d?.seconds) return d.seconds * 1000;
+          const parsed = new Date(d).getTime();
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        diff = getTime(a.date) - getTime(b.date);
+      } else if (accTxSortField === 'description') {
+        diff = (a.description || '').localeCompare(b.description || '', 'tr');
+      } else if (accTxSortField === 'category') {
+        const dirA = getTxDirection(a, selectedAccount);
+        const nameA = getCounterpartName(a, selectedAccount, dirA);
+        const dirB = getTxDirection(b, selectedAccount);
+        const nameB = getCounterpartName(b, selectedAccount, dirB);
+        diff = nameA.localeCompare(nameB, 'tr');
+      } else if (accTxSortField === 'amount') {
+        diff = a.amount - b.amount;
+      }
+      return accTxSortOrder === 'asc' ? diff : -diff;
+    });
+  }, [selectedAccountTxs, selectedAccount, accTxFilter, accTxSearch, accTxSortField, accTxSortOrder, categories, accounts]);
 
   const accTxStats = useMemo(() => {
     if (!selectedAccount) return { totalIncoming: 0, totalOutgoing: 0, count: 0 };
@@ -739,10 +778,62 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 <table className="w-full text-left">
                   <thead className="bg-zinc-900/90 text-[10px] text-zinc-400 uppercase tracking-wider sticky top-0 backdrop-blur-sm z-10">
                     <tr>
-                      <th className="px-4 py-3 font-bold">Tarih</th>
-                      <th className="px-4 py-3 font-bold">Açıklama</th>
-                      <th className="px-4 py-3 font-bold">Kategori / Hesap</th>
-                      <th className="px-4 py-3 font-bold text-right">Tutar</th>
+                      <th className="px-4 py-3 font-bold">
+                        <button 
+                          onClick={() => toggleAccTxSort('date')}
+                          className="flex items-center gap-1.5 hover:text-indigo-400 transition-colors"
+                          title="Tarihe göre sırala"
+                        >
+                          Tarih
+                          {accTxSortField === 'date' ? (
+                            accTxSortOrder === 'desc' ? <ArrowDown className="w-3 h-3 text-indigo-400" /> : <ArrowUp className="w-3 h-3 text-indigo-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 font-bold">
+                        <button 
+                          onClick={() => toggleAccTxSort('description')}
+                          className="flex items-center gap-1.5 hover:text-indigo-400 transition-colors"
+                          title="Açıklamaya göre sırala"
+                        >
+                          Açıklama
+                          {accTxSortField === 'description' ? (
+                            accTxSortOrder === 'desc' ? <ArrowDown className="w-3 h-3 text-indigo-400" /> : <ArrowUp className="w-3 h-3 text-indigo-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 font-bold">
+                        <button 
+                          onClick={() => toggleAccTxSort('category')}
+                          className="flex items-center gap-1.5 hover:text-indigo-400 transition-colors"
+                          title="Kategori veya hesaba göre sırala"
+                        >
+                          Kategori / Hesap
+                          {accTxSortField === 'category' ? (
+                            accTxSortOrder === 'desc' ? <ArrowDown className="w-3 h-3 text-indigo-400" /> : <ArrowUp className="w-3 h-3 text-indigo-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 font-bold text-right">
+                        <button 
+                          onClick={() => toggleAccTxSort('amount')}
+                          className="flex items-center gap-1.5 ml-auto hover:text-indigo-400 transition-colors"
+                          title="Tutara göre sırala"
+                        >
+                          Tutar
+                          {accTxSortField === 'amount' ? (
+                            accTxSortOrder === 'desc' ? <ArrowDown className="w-3 h-3 text-indigo-400" /> : <ArrowUp className="w-3 h-3 text-indigo-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 text-right">İşlem</th>
                     </tr>
                   </thead>
@@ -787,19 +878,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                                     onEditTransaction(tx);
                                     setSelectedAccount(null);
                                   }}
-                                  className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                  className="p-1.5 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all border border-zinc-800/60 bg-zinc-900/40"
                                   title="Düzenle"
                                 >
                                   <Pencil className="w-3 h-3" />
                                 </button>
                               )}
                               <button
-                                onClick={async () => {
-                                  if (confirm(`${tx.description} işlemini silmek istediğinize emin misiniz?`)) {
-                                    await deleteLedgerTransaction(householdId, tx.id);
-                                  }
-                                }}
-                                className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                onClick={() => setDeleteConfirmTx(tx)}
+                                className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all border border-zinc-800/60 bg-zinc-900/40"
                                 title="Sil"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -870,6 +957,19 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal 
+        isOpen={!!deleteConfirmTx}
+        onClose={() => setDeleteConfirmTx(null)}
+        onConfirm={async () => {
+          if (deleteConfirmTx) {
+            await deleteLedgerTransaction(householdId, deleteConfirmTx.id);
+            setDeleteConfirmTx(null);
+          }
+        }}
+        title="İşlemi Sil"
+        message={`${deleteConfirmTx?.description || 'Bu'} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de güncelleyecektir.`}
+      />
     </div>
   );
 };

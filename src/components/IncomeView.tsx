@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   TrendingUp, Plus, Calendar, ArrowUpRight, 
-  Clock, Wallet, Briefcase, Target, Trash2, Pencil, Check, X
+  Clock, Wallet, Briefcase, Target, Trash2, Pencil, Check, X,
+  ArrowDown, ArrowUp, ArrowUpDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { IncomeSource, ExpectedIncome, Account, Transaction } from '../types';
@@ -88,11 +89,49 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
     setApprovingId(null);
   };
 
-  const realizedIncomes = transactions.filter(tx => {
-    const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
-    const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
-    return debitAcc?.type === 'asset' && creditAcc?.type === 'income';
-  });
+  const [incomeSortField, setIncomeSortField] = useState<'date' | 'description' | 'account' | 'amount'>('date');
+  const [incomeSortOrder, setIncomeSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  const toggleIncomeSort = (field: 'date' | 'description' | 'account' | 'amount') => {
+    if (incomeSortField === field) {
+      setIncomeSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setIncomeSortField(field);
+      setIncomeSortOrder(field === 'description' || field === 'account' ? 'asc' : 'desc');
+    }
+  };
+
+  const realizedIncomes = useMemo(() => {
+    const list = transactions.filter(tx => {
+      const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
+      const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
+      return debitAcc?.type === 'asset' && creditAcc?.type === 'income';
+    });
+
+    return [...list].sort((a, b) => {
+      let diff = 0;
+      if (incomeSortField === 'date') {
+        const getTime = (d: any) => {
+          if (!d) return 0;
+          if (d instanceof Date) return d.getTime();
+          if (typeof d === 'number') return d;
+          if (d?.seconds) return d.seconds * 1000;
+          const parsed = new Date(d).getTime();
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        diff = getTime(a.date) - getTime(b.date);
+      } else if (incomeSortField === 'description') {
+        diff = (a.description || '').localeCompare(b.description || '', 'tr');
+      } else if (incomeSortField === 'account') {
+        const accA = accounts.find(acc => acc.id === a.debitAccountId)?.name || '';
+        const accB = accounts.find(acc => acc.id === b.debitAccountId)?.name || '';
+        diff = accA.localeCompare(accB, 'tr');
+      } else if (incomeSortField === 'amount') {
+        diff = a.amount - b.amount;
+      }
+      return incomeSortOrder === 'asc' ? diff : -diff;
+    });
+  }, [transactions, accounts, incomeSortField, incomeSortOrder]);
 
   const assetAccounts = accounts.filter(a => a.type === 'asset');
 
@@ -331,10 +370,62 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-zinc-800">
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Tarih</th>
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Açıklama</th>
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Hesap</th>
-                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Tutar</th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                  <button 
+                    onClick={() => toggleIncomeSort('date')}
+                    className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                    title="Tarihe göre sırala"
+                  >
+                    Tarih
+                    {incomeSortField === 'date' ? (
+                      incomeSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                  <button 
+                    onClick={() => toggleIncomeSort('description')}
+                    className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                    title="Açıklamaya göre sırala"
+                  >
+                    Açıklama
+                    {incomeSortField === 'description' ? (
+                      incomeSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                  <button 
+                    onClick={() => toggleIncomeSort('account')}
+                    className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                    title="Hesaba göre sırala"
+                  >
+                    Hesap
+                    {incomeSortField === 'account' ? (
+                      incomeSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">
+                  <button 
+                    onClick={() => toggleIncomeSort('amount')}
+                    className="flex items-center gap-1.5 ml-auto hover:text-emerald-400 transition-colors"
+                    title="Tutara göre sırala"
+                  >
+                    Tutar
+                    {incomeSortField === 'amount' ? (
+                      incomeSortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right w-10"></th>
               </tr>
             </thead>
@@ -357,7 +448,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                     {onEditTransaction && (
                       <button 
                         onClick={() => onEditTransaction(tx)}
-                        className="p-1.5 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        className="p-1.5 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all border border-zinc-800/60 bg-zinc-900/40"
                         title="Düzenle"
                       >
                         <Pencil className="w-3.5 h-3.5" />
@@ -370,7 +461,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                         title: 'İşlemi Sil',
                         message: `${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`
                       })}
-                      className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                      className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all border border-zinc-800/60 bg-zinc-900/40"
                       title="Sil"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

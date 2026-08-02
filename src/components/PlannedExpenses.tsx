@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Calendar, Target, Trash2, Check, X, AlertCircle, TrendingDown, Tag, Wallet, Settings, ArrowRightLeft, Clock } from 'lucide-react';
+import { Plus, Calendar, Target, Trash2, Check, X, AlertCircle, TrendingDown, Tag, Wallet, Settings, ArrowRightLeft, Clock, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlannedExpense, Category, Account, ExpenseSource, ExpectedExpense, ExpenseFlowType } from '../types';
 import { useCollection } from '../hooks/useFirestore';
@@ -57,7 +57,50 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
   const { formatWithEquivalent, convertToTRY } = useExchangeRates(isPrivacyMode);
 
   const [activeView, setActiveView] = useState<'planned' | 'recurring'>('planned');
+  const [plannedSortField, setPlannedSortField] = useState<'dueDate' | 'title' | 'category' | 'amount' | 'status' | 'owner'>('dueDate');
+  const [plannedSortOrder, setPlannedSortOrder] = useState<'asc' | 'desc'>('asc');
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
+  const togglePlannedSort = (field: 'dueDate' | 'title' | 'category' | 'amount' | 'status' | 'owner') => {
+    if (plannedSortField === field) {
+      setPlannedSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setPlannedSortField(field);
+      setPlannedSortOrder(field === 'title' || field === 'category' || field === 'owner' ? 'asc' : 'desc');
+    }
+  };
+
+  const sortedPlannedExpenses = useMemo(() => {
+    return [...plannedExpenses].sort((a, b) => {
+      let diff = 0;
+      if (plannedSortField === 'dueDate') {
+        const getTime = (d: any) => {
+          if (!d) return 0;
+          if (d instanceof Date) return d.getTime();
+          if (typeof d === 'number') return d;
+          if (d?.seconds) return d.seconds * 1000;
+          const parsed = new Date(d).getTime();
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        diff = getTime(a.dueDate) - getTime(b.dueDate);
+      } else if (plannedSortField === 'title') {
+        diff = (a.title || '').localeCompare(b.title || '', 'tr');
+      } else if (plannedSortField === 'category') {
+        const catA = categories.find(c => c.id === a.categoryId)?.name || '';
+        const catB = categories.find(c => c.id === b.categoryId)?.name || '';
+        diff = catA.localeCompare(catB, 'tr');
+      } else if (plannedSortField === 'amount') {
+        diff = a.amount - b.amount;
+      } else if (plannedSortField === 'status') {
+        diff = (a.status || '').localeCompare(b.status || '', 'tr');
+      } else if (plannedSortField === 'owner') {
+        const nameA = members?.[a.ownerId]?.name || '';
+        const nameB = members?.[b.ownerId]?.name || '';
+        diff = nameA.localeCompare(nameB, 'tr');
+      }
+      return plannedSortOrder === 'asc' ? diff : -diff;
+    });
+  }, [plannedExpenses, plannedSortField, plannedSortOrder, categories, members]);
   const [expenseToDelete, setExpenseToDelete] = useState<{ id: string; type: 'planned' | 'source' | 'expected' } | null>(null);
 
   const openModal = (expense?: PlannedExpense) => {
@@ -202,17 +245,95 @@ export const PlannedExpenses: React.FC<PlannedExpensesProps> = ({
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-border bg-secondary/30">
-                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Durum</th>
-                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Sorumlu</th>
-                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Başlık</th>
-                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Kategori</th>
-                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Vade</th>
-                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Miktar</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        <button 
+                          onClick={() => togglePlannedSort('status')}
+                          className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                          title="Duruma göre sırala"
+                        >
+                          Durum
+                          {plannedSortField === 'status' ? (
+                            plannedSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        <button 
+                          onClick={() => togglePlannedSort('owner')}
+                          className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                          title="Sorumluya göre sırala"
+                        >
+                          Sorumlu
+                          {plannedSortField === 'owner' ? (
+                            plannedSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        <button 
+                          onClick={() => togglePlannedSort('title')}
+                          className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                          title="Başlığa göre sırala"
+                        >
+                          Başlık
+                          {plannedSortField === 'title' ? (
+                            plannedSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        <button 
+                          onClick={() => togglePlannedSort('category')}
+                          className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                          title="Kategoriye göre sırala"
+                        >
+                          Kategori
+                          {plannedSortField === 'category' ? (
+                            plannedSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        <button 
+                          onClick={() => togglePlannedSort('dueDate')}
+                          className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors"
+                          title="Vadeye göre sırala"
+                        >
+                          Vade
+                          {plannedSortField === 'dueDate' ? (
+                            plannedSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">
+                        <button 
+                          onClick={() => togglePlannedSort('amount')}
+                          className="flex items-center gap-1.5 ml-auto hover:text-emerald-400 transition-colors"
+                          title="Miktara göre sırala"
+                        >
+                          Miktar
+                          {plannedSortField === 'amount' ? (
+                            plannedSortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                          )}
+                        </button>
+                      </th>
                       <th className="px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">İşlemler</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {plannedExpenses.map(expense => {
+                    {sortedPlannedExpenses.map(expense => {
                       const category = categories.find(c => c.id === expense.categoryId);
                       const isOverdue = expense.status === 'pending' && new Date(expense.dueDate) < new Date();
                       const member = members?.[expense.ownerId];
