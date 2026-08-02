@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   TrendingUp, TrendingDown, Wallet, Building2, Bitcoin, Gift, 
   Calendar, ArrowUpRight, ArrowDownLeft, Plus, Bus, ArrowRightLeft,
-  GripHorizontal, Eye, EyeOff, PieChart, X, CreditCard, Clock
+  GripHorizontal, Eye, EyeOff, PieChart, X, CreditCard, Clock, ShieldCheck
 } from 'lucide-react';
 import { motion, Reorder } from 'framer-motion';
 import { Account, Transaction, IncomeSource, ExpectedIncome, PlannedExpense } from '../types';
@@ -74,6 +74,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { id: 'master_widget', visible: true },
     { id: 'market_data', visible: true },
     { id: 'credit_cards', visible: true },
+    { id: 'bes_oks_summary', visible: true },
     { id: 'quick_actions', visible: true },
     { id: 'branch_distribution', visible: true },
     { id: 'cash_flow_radar', visible: true },
@@ -97,13 +98,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return isPrivacyMode ? !toggledPrivacy.has(id) : toggledPrivacy.has(id);
   };
 
-  // Calculations
-  const totalAssets = accounts.filter(a => a.type === 'asset').reduce((sum, a) => {
+  // Branch distribution & Asset Valuation
+  const getBalanceWithPrice = (a: Account) => {
     let balance = a.balance;
     if (a.assetDetails && assetPrices[a.assetDetails.symbol]) {
       balance = a.assetDetails.quantity * assetPrices[a.assetDetails.symbol].price;
+    } else if (a.subType === 'bes' || a.subType === 'oks' || a.branch === 'pension' || a.besDetails) {
+      const stateBal = a.besDetails?.stateContributionBalance ?? (a.balance * ((a.besDetails?.stateContributionRate ?? 30) / 100));
+      balance = a.balance + stateBal;
     }
-    return sum + convertToTRY(balance, a.currency || 'TRY');
+    return convertToTRY(balance, a.currency || 'TRY');
+  };
+
+  // Calculations
+  const totalAssets = accounts.filter(a => a.type === 'asset').reduce((sum, a) => {
+    return sum + getBalanceWithPrice(a);
   }, 0);
   const totalLiabilities = accounts.filter(a => a.type === 'liability').reduce((sum, a) => sum + convertToTRY(a.balance, a.currency || 'TRY'), 0);
   const netWorth = totalAssets - totalLiabilities;
@@ -112,18 +121,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const prevNetWorth = netWorth * 0.95; // 5% increase mock
   const netWorthChange = prevNetWorth ? ((netWorth - prevNetWorth) / prevNetWorth) * 100 : 0;
 
-  // Branch distribution
-  const getBalanceWithPrice = (a: Account) => {
-    let balance = a.balance;
-    if (a.assetDetails && assetPrices[a.assetDetails.symbol]) {
-      balance = a.assetDetails.quantity * assetPrices[a.assetDetails.symbol].price;
-    }
-    return convertToTRY(balance, a.currency || 'TRY');
-  };
-
   const bankBalance = accounts.filter(a => a.branch === 'banking' && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
+  const pensionBalance = accounts.filter(a => (a.branch === 'pension' || a.subType === 'bes' || a.subType === 'oks' || !!a.besDetails) && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
   const cryptoBalance = accounts.filter(a => a.branch === 'crypto' && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
   const socialBalance = accounts.filter(a => a.branch === 'social_gift' && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
+  const personalBalance = accounts.filter(a => a.branch === 'personal' && a.type === 'asset').reduce((sum, a) => sum + getBalanceWithPrice(a), 0);
+
+  const besAccounts = useMemo(() => 
+    accounts.filter(a => a.subType === 'bes' || a.subType === 'oks' || a.branch === 'pension' || !!a.besDetails),
+    [accounts]
+  );
+
+  const totalBesPersonalBalance = useMemo(() =>
+    besAccounts.reduce((sum, a) => sum + convertToTRY(a.balance, a.currency || 'TRY'), 0),
+    [besAccounts, convertToTRY]
+  );
+
+  const totalBesStateContribution = useMemo(() =>
+    besAccounts.reduce((sum, a) => {
+      const stateBal = a.besDetails?.stateContributionBalance ?? (a.balance * ((a.besDetails?.stateContributionRate ?? 30) / 100));
+      return sum + convertToTRY(stateBal, a.currency || 'TRY');
+    }, 0),
+    [besAccounts, convertToTRY]
+  );
+
+  const totalBesPortfolio = totalBesPersonalBalance + totalBesStateContribution;
+
+  const totalBesMonthlyContribution = useMemo(() =>
+    besAccounts.reduce((sum, a) => sum + convertToTRY(a.besDetails?.monthlyContribution || 0, a.currency || 'TRY'), 0),
+    [besAccounts, convertToTRY]
+  );
 
   const creditCardAccounts = useMemo(() => 
     accounts.filter(a => a.subType === 'credit_card'),
@@ -427,12 +454,84 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         );
 
+      case 'bes_oks_summary':
+        if (besAccounts.length === 0) return null;
+
+        return (
+          <div className="corporate-card p-8 relative group overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-amber-500/10 transition-colors duration-500" />
+            {moduleHeader('BES & OKS Emeklilik Takibi', <ShieldCheck className="text-amber-500" />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Toplam Emeklilik Portföyü</p>
+                <p className="text-2xl font-black text-amber-400 tracking-tighter">
+                  {formatWithEquivalent(totalBesPortfolio, 'TRY', isItemHidden('bes_oks_summary'))}
+                </p>
+              </div>
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Kendi Birikiminiz (Anapara)</p>
+                <p className="text-2xl font-black text-foreground tracking-tighter">
+                  {formatWithEquivalent(totalBesPersonalBalance, 'TRY', isItemHidden('bes_oks_summary'))}
+                </p>
+              </div>
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Toplam Devlet Katkısı (%30)</p>
+                <p className="text-2xl font-black text-emerald-400 tracking-tighter">
+                  +{formatWithEquivalent(totalBesStateContribution, 'TRY', isItemHidden('bes_oks_summary'))}
+                </p>
+              </div>
+              <div className="p-6 rounded-2xl bg-secondary/30 border border-border/50 shadow-sm">
+                <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2 opacity-60">Aylık Düzenli Katkı</p>
+                <p className="text-2xl font-black text-foreground tracking-tighter">
+                  {formatWithEquivalent(totalBesMonthlyContribution, 'TRY', isItemHidden('bes_oks_summary'))} / ay
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+              {besAccounts.map(acc => {
+                const stateBal = acc.besDetails?.stateContributionBalance ?? (acc.balance * ((acc.besDetails?.stateContributionRate ?? 30) / 100));
+                const totalVal = acc.balance + stateBal;
+
+                return (
+                  <div key={acc.id} className="p-4 rounded-xl bg-secondary/20 border border-border/50 flex justify-between items-center group/card hover:bg-secondary/40 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20 group-hover/card:scale-110 transition-transform">
+                        <ShieldCheck className="w-5 h-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-black text-xs text-foreground tracking-tight">{acc.name}</p>
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/20 text-amber-400 rounded">
+                            {acc.subType === 'oks' ? 'OKS' : 'BES'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground font-medium mt-0.5">
+                          {acc.institution || 'Emeklilik Şirketi'} {acc.besDetails?.contractNo ? `• Plan: ${acc.besDetails.contractNo}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-base text-emerald-400 tracking-tighter">
+                        {formatWithEquivalent(totalVal, acc.currency || 'TRY', isItemHidden('bes_oks_summary'))}
+                      </p>
+                      <p className="text-[9px] text-amber-400 font-bold uppercase tracking-widest">
+                        Devlet Katkısı: +{formatWithEquivalent(stateBal, acc.currency || 'TRY', isItemHidden('bes_oks_summary'))}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+
       case 'branch_distribution':
         return (
           <div className="corporate-card p-8 relative group overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-primary/10 transition-colors duration-500" />
             {moduleHeader('Varlık Dağılımı', <PieChart />)}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
               <button className="flex flex-col p-6 rounded-2xl bg-secondary/30 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all text-left group/item relative overflow-hidden shadow-sm hover:shadow-md">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-12 -mt-12 blur-2xl group-hover/item:bg-blue-500/10 transition-colors" />
                 <div className="flex items-center gap-3 text-blue-500 mb-4">
@@ -442,6 +541,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <span className="font-black text-[9px] uppercase tracking-[0.2em] opacity-80">Bankalar</span>
                 </div>
                 <span className="text-2xl font-black text-foreground group-hover/item:text-primary transition-colors tracking-tighter">{formatWithEquivalent(bankBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
+              </button>
+              <button className="flex flex-col p-6 rounded-2xl bg-secondary/30 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all text-left group/item relative overflow-hidden shadow-sm hover:shadow-md">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 blur-2xl group-hover/item:bg-amber-500/10 transition-colors" />
+                <div className="flex items-center gap-3 text-amber-500 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/10">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <span className="font-black text-[9px] uppercase tracking-[0.2em] opacity-80">BES & OKS</span>
+                </div>
+                <span className="text-2xl font-black text-foreground group-hover/item:text-primary transition-colors tracking-tighter">{formatWithEquivalent(pensionBalance, 'TRY', isItemHidden('branch_distribution'))}</span>
               </button>
               <button className="flex flex-col p-6 rounded-2xl bg-secondary/30 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all text-left group/item relative overflow-hidden shadow-sm hover:shadow-md">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full -mr-12 -mt-12 blur-2xl group-hover/item:bg-orange-500/10 transition-colors" />

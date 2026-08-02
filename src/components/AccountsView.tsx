@@ -125,6 +125,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           const subTypeMap: any = { 
             liquidity_deposit: 'Vadesiz/Mevduat', 
             investment: 'Yatırım', 
+            bes: 'BES (Bireysel Emeklilik)',
+            oks: 'OKS (Otomatik Katılım)',
             credit_debt: 'Alacaklar',
             credit_card: 'Kredi Kartları',
             transport: 'Ulaşım Kartları',
@@ -137,7 +139,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           key = subTypeMap[acc.subType] || 'Diğer';
         }
       } else if (groupBy === 'branch') {
-        const branchMap: any = { banking: 'Bankacılık', crypto: 'Kripto', social_gift: 'Sosyal/Yan Haklar', personal: 'Kişisel ve Nakit' };
+        const branchMap: any = { banking: 'Bankacılık', pension: 'BES & OKS Emeklilik', crypto: 'Kripto', social_gift: 'Sosyal/Yan Haklar', personal: 'Kişisel ve Nakit' };
         key = branchMap[acc.branch] || 'Diğer';
       }
       
@@ -519,6 +521,43 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       </div>
                     );
                   })()}
+
+                  {(account.subType === 'bes' || account.subType === 'oks' || account.besDetails) && (() => {
+                    const besStateBal = account.besDetails?.stateContributionBalance ?? (account.balance * ((account.besDetails?.stateContributionRate ?? 30) / 100));
+                    const totalBesVal = account.balance + besStateBal;
+                    const monthlyCont = account.besDetails?.monthlyContribution || 0;
+
+                    return (
+                      <div className="mt-4 p-3.5 bg-amber-500/5 rounded-2xl border border-amber-500/20 space-y-2">
+                        <div className="flex justify-between items-center text-[11px] text-zinc-400">
+                          <span>Kendi Birikiminiz:</span>
+                          <span className="font-bold text-white">
+                            {formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] text-zinc-400">
+                          <span>Devlet Katkısı (+%{account.besDetails?.stateContributionRate || 30}):</span>
+                          <span className="font-bold text-amber-400">
+                            +{formatWithEquivalent(besStateBal, account.currency || 'TRY', isAccountHidden(account.id))}
+                          </span>
+                        </div>
+                        {monthlyCont > 0 && (
+                          <div className="flex justify-between items-center text-[11px] text-zinc-400">
+                            <span>Aylık Düzenli Katkı:</span>
+                            <span className="font-semibold text-emerald-400">
+                              {formatWithEquivalent(monthlyCont, account.currency || 'TRY', isAccountHidden(account.id))} / ay
+                            </span>
+                          </div>
+                        )}
+                        <div className="pt-2 border-t border-amber-500/10 flex justify-between items-center text-xs">
+                          <span className="font-black text-amber-300 uppercase tracking-wider text-[10px]">Toplam BES Portföyü</span>
+                          <span className="font-black text-emerald-400 text-sm">
+                            {formatWithEquivalent(totalBesVal, account.currency || 'TRY', isAccountHidden(account.id))}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Open Account Transactions Button Footer */}
@@ -587,6 +626,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                           {account.institution || 'Diğer Kurum'} • {
                             account.assetDetails?.assetType === 'stock' ? 'Hisse Senedi' :
                             account.assetDetails?.assetType === 'crypto' ? 'Kripto' :
+                            account.subType === 'bes' ? 'BES Emeklilik' :
+                            account.subType === 'oks' ? 'OKS Emeklilik' :
                             account.subType === 'liquidity_deposit' ? 'Likidite/Mevduat' :
                             account.subType === 'credit_card' ? 'Kredi Kartı' :
                             account.subType === 'cash' ? 'Nakit' :
@@ -745,6 +786,42 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Kullanılabilir Limit</span>
                       <span className={`text-lg font-black ${selectedAvailableLimit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
                         {formatWithEquivalent(selectedAvailableLimit, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })() : (selectedAccount.subType === 'bes' || selectedAccount.subType === 'oks' || selectedAccount.besDetails) ? (() => {
+                const stateContribution = selectedAccount.besDetails?.stateContributionBalance ?? (selectedAccount.balance * ((selectedAccount.besDetails?.stateContributionRate ?? 30) / 100));
+                const totalBesPortfolio = selectedAccount.balance + stateContribution;
+                const monthlyCont = selectedAccount.besDetails?.monthlyContribution || 0;
+
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
+                    <div className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                      <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">Kendi Birikiminiz</span>
+                      <span className="text-lg font-black text-white">
+                        {formatWithEquivalent(selectedAccount.balance, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
+
+                    <div className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Devlet Katkısı (%30)</span>
+                      <span className="text-lg font-black text-amber-400">
+                        +{formatWithEquivalent(stateContribution, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
+
+                    <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Toplam Emeklilik Portföyü</span>
+                      <span className="text-lg font-black text-emerald-400">
+                        {formatWithEquivalent(totalBesPortfolio, selectedAccount.currency || 'TRY')}
+                      </span>
+                    </div>
+
+                    <div className="p-4 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Aylık Düzenli Katkı</span>
+                      <span className="text-lg font-black text-foreground">
+                        {formatWithEquivalent(monthlyCont, selectedAccount.currency || 'TRY')}
                       </span>
                     </div>
                   </div>

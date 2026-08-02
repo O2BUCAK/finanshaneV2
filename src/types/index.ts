@@ -1,12 +1,13 @@
 export type AccountType = 'asset' | 'liability' | 'income' | 'expense';
 
-export type AccountBranch = 'banking' | 'crypto' | 'social_gift' | 'personal';
+export type AccountBranch = 'banking' | 'crypto' | 'social_gift' | 'personal' | 'pension';
 
 export type AccountSubType = 
   | 'liquidity_deposit' | 'investment' | 'credit_debt' | 'credit_card' // Banking
   | 'global_exchange' | 'local_exchange' // Crypto
   | 'transport' | 'food' | 'corporate_gift' // Social/Gift
-  | 'cash' | 'personal_debt' | 'personal_loan'; // Personal
+  | 'cash' | 'personal_debt' | 'personal_loan' // Personal
+  | 'bes' | 'oks'; // Pension / BES & OKS
 
 export type IncomeFlowType = 'fixed' | 'variable' | 'spot';
 export type IncomeCalculationType = 'fixed' | 'daily_rate';
@@ -166,6 +167,15 @@ export interface Account {
     totalInterest: number;
     remainingPrincipal: number;
     nextPaymentDate: string;
+  };
+  besDetails?: {
+    company: string;
+    contractNo?: string;
+    monthlyContribution?: number;
+    stateContributionRate?: number;
+    stateContributionBalance?: number;
+    startDate?: string;
+    fundDistribution?: { name: string; percentage: number }[];
   };
   apiConfig?: {
     apiKey: string;

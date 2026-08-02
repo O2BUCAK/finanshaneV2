@@ -505,6 +505,7 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
 
 const BRANCH_OPTIONS = [
   { id: 'banking', label: 'Bankacılık', icon: Building2, color: 'text-blue-500' },
+  { id: 'pension', label: 'BES & OKS Emeklilik', icon: ShieldCheck, color: 'text-amber-500' },
   { id: 'crypto', label: 'Kripto Borsaları', icon: Bitcoin, color: 'text-orange-500' },
   { id: 'social_gift', label: 'Sosyal ve Hediye Kartları', icon: Gift, color: 'text-purple-500' },
   { id: 'personal', label: 'Kişisel ve Nakit', icon: Wallet, color: 'text-emerald-500' },
@@ -516,6 +517,10 @@ const SUBTYPE_OPTIONS: Record<string, { id: string; label: string }[]> = {
     { id: 'investment', label: 'Yatırım' },
     { id: 'credit_debt', label: 'Kredi ve Borç' },
     { id: 'credit_card', label: 'Kredi Kartı' },
+  ],
+  pension: [
+    { id: 'bes', label: 'BES (Bireysel Emeklilik Sistemi)' },
+    { id: 'oks', label: 'OKS (Otomatik Katılım Sistemi)' },
   ],
   crypto: [
     { id: 'global_exchange', label: 'Küresel Borsa' },
@@ -595,6 +600,19 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 const INSTITUTION_OPTIONS: Record<string, string[]> = {
   banking: ['Garanti BBVA', 'Akbank', 'İş Bankası', 'Ziraat Bankası', 'VakıfBank', 'Halkbank', 'QNB Finansbank', 'DenizBank', 'Kuveyt Türk', 'Enpara', 'Papara', 'TEB', 'ING', 'HSBC', 'Odeabank', 'Burgan Bank', 'Alternatif Bank', 'Anadolubank', 'Fibabanka', 'Şekerbank', 'Emlak Katılım', 'Vakıf Katılım', 'Türkiye Finans', 'Albaraka Türk'],
+  pension: [
+    'Anadolu Hayat Emeklilik',
+    'Türkiye Hayat Emeklilik',
+    'Garanti BBVA Emeklilik',
+    'AgeSA Hayat ve Emeklilik',
+    'Allianz Yaşam ve Emeklilik',
+    'NN Hayat ve Emeklilik',
+    'BNP Paribas Cardif Emeklilik',
+    'QNB Sağlık Hayat Emeklilik',
+    'MetLife Emeklilik',
+    'Cigna Sağlık Hayat Emeklilik',
+    'Katılım Emeklilik',
+  ],
   crypto: ['Bitexen Global', 'Binance', 'Paribu', 'BtcTurk', 'OKX', 'KuCoin', 'Coinbase', 'Gate.io', 'Huobi', 'Kraken', 'Bitfinex', 'Mexc'],
   social_gift: ['Sodexo', 'Ticket', 'Multinet', 'Metropol', 'Yemeksepeti', 'İstanbulkart', 'Ankarakart', 'İzmirim Kart', 'Hopi', 'Boyner', 'Migros Money', 'CarrefourSA Kart'],
   personal: ['Nakit', 'Kişisel', 'Elden', 'Aile'],
@@ -701,6 +719,13 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   // Credit Card states
   const [creditLimit, setCreditLimit] = useState('');
   const [statementDay, setStatementDay] = useState('1');
+
+  // BES/OKS states
+  const [besMonthlyContribution, setBesMonthlyContribution] = useState('');
+  const [besStateContributionRate, setBesStateContributionRate] = useState('30');
+  const [besStateContributionBalance, setBesStateContributionBalance] = useState('');
+  const [besContractNo, setBesContractNo] = useState('');
+  const [besStartDate, setBesStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     if (subType === 'personal_debt' || subType === 'credit_card' || subType === 'credit_debt') {
@@ -844,6 +869,20 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
         setCreditLimit('');
         setStatementDay('1');
       }
+
+      if (initialData.besDetails) {
+        setBesMonthlyContribution(initialData.besDetails.monthlyContribution?.toString() || '');
+        setBesStateContributionRate(initialData.besDetails.stateContributionRate?.toString() || '30');
+        setBesStateContributionBalance(initialData.besDetails.stateContributionBalance?.toString() || '');
+        setBesContractNo(initialData.besDetails.contractNo || '');
+        setBesStartDate(initialData.besDetails.startDate || new Date(initialData.createdAt).toISOString().split('T')[0]);
+      } else {
+        setBesMonthlyContribution('');
+        setBesStateContributionRate('30');
+        setBesStateContributionBalance('');
+        setBesContractNo('');
+        setBesStartDate(new Date().toISOString().split('T')[0]);
+      }
     } else {
       setName('');
       setOwnerId(user?.uid || '');
@@ -878,6 +917,11 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       setLoanStartDate(new Date().toISOString().split('T')[0]);
       setCreditLimit('');
       setStatementDay('1');
+      setBesMonthlyContribution('');
+      setBesStateContributionRate('30');
+      setBesStateContributionBalance('');
+      setBesContractNo('');
+      setBesStartDate(new Date().toISOString().split('T')[0]);
     }
   }, [initialData, isOpen, user]);
 
@@ -943,6 +987,25 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
       }
     } else {
       accountData.loanDetails = null;
+    }
+
+    if (subType === 'bes' || subType === 'oks' || branch === 'pension') {
+      const rate = parseFloat(besStateContributionRate) || 30;
+      const myBal = parseFloat(balance) || 0;
+      const calculatedStateBal = besStateContributionBalance !== ''
+        ? (parseFloat(besStateContributionBalance) || 0)
+        : (myBal * (rate / 100));
+
+      accountData.besDetails = {
+        monthlyContribution: parseFloat(besMonthlyContribution) || 0,
+        stateContributionRate: rate,
+        stateContributionBalance: calculatedStateBal,
+        contractNo: besContractNo.trim(),
+        startDate: besStartDate || new Date().toISOString().split('T')[0],
+      };
+      accountData.type = 'asset';
+    } else {
+      accountData.besDetails = null;
     }
 
     accountData.apiConfig = isApiConnected ? {
@@ -1097,6 +1160,105 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
               <p className="text-[10px] text-rose-500/60 font-medium italic">
                 * Borç ve asgari ödeme tutarı harcamalarınıza göre otomatik hesaplanacaktır.
               </p>
+            </div>
+          )}
+
+          {(subType === 'bes' || subType === 'oks' || branch === 'pension') && (
+            <div className="space-y-4 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+                <ShieldCheck className="w-4 h-4" />
+                {subType === 'bes' ? 'BES Detayları & Devlet Katkısı' : 'OKS Detayları & Devlet Katkısı'}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Sözleşme / Plan No</label>
+                  <input
+                    type="text"
+                    value={besContractNo}
+                    onChange={(e) => setBesContractNo(e.target.value)}
+                    placeholder="Örn: 12345678"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Sözleşme Başlangıç Tarihi</label>
+                  <input
+                    type="date"
+                    value={besStartDate}
+                    onChange={(e) => setBesStartDate(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Aylık Düzenli Katkı (₺)</label>
+                  <input
+                    type="text"
+                    value={formatAmount(besMonthlyContribution)}
+                    onChange={(e) => setBesMonthlyContribution(parseAmount(cleanAmountInput(e.target.value)))}
+                    placeholder="0,00"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Devlet Katkısı Oranı (%)</label>
+                  <input
+                    type="text"
+                    value={besStateContributionRate}
+                    onChange={(e) => setBesStateContributionRate(e.target.value)}
+                    placeholder="30"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Birikmiş Devlet Katkısı Tutarı (₺)</label>
+                  <span className="text-[10px] text-amber-400/80 font-medium">Boş kalırsa %{besStateContributionRate || '30'} otomatik hesaplanır</span>
+                </div>
+                <input
+                  type="text"
+                  value={formatAmount(besStateContributionBalance)}
+                  onChange={(e) => setBesStateContributionBalance(parseAmount(cleanAmountInput(e.target.value)))}
+                  placeholder={`Otomatik: ${formatWithEquivalent((parseFloat(balance) || 0) * ((parseFloat(besStateContributionRate) || 30) / 100), 'TRY')}`}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-white"
+                />
+              </div>
+
+              <div className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 text-[11px] text-zinc-400 space-y-1.5">
+                <div className="flex justify-between">
+                  <span>Kendi Birikiminiz (Anapara):</span>
+                  <span className="font-bold text-white">{formatWithEquivalent(parseFloat(balance) || 0, 'TRY')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Devlet Katkısı Payı (%{besStateContributionRate || '30'}):</span>
+                  <span className="font-bold text-amber-400">
+                    +{formatWithEquivalent(
+                      besStateContributionBalance !== ''
+                        ? (parseFloat(besStateContributionBalance) || 0)
+                        : ((parseFloat(balance) || 0) * ((parseFloat(besStateContributionRate) || 30) / 100)),
+                      'TRY'
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between pt-1.5 border-t border-zinc-800 text-xs">
+                  <span className="font-bold text-zinc-300">Toplam Emeklilik Portföyü:</span>
+                  <span className="font-black text-emerald-400">
+                    {formatWithEquivalent(
+                      (parseFloat(balance) || 0) + (
+                        besStateContributionBalance !== ''
+                          ? (parseFloat(besStateContributionBalance) || 0)
+                          : ((parseFloat(balance) || 0) * ((parseFloat(besStateContributionRate) || 30) / 100))
+                      ),
+                      'TRY'
+                    )}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
