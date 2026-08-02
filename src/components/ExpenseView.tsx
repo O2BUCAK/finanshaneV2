@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   TrendingDown, Plus, Calendar, ArrowDownLeft, 
-  Clock, Wallet, Briefcase, Target, CreditCard, Tag, Trash2,
+  Clock, Wallet, Briefcase, Target, CreditCard, Tag, Trash2, Pencil,
   Check, X, AlertCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -24,6 +24,7 @@ interface ExpenseViewProps {
   categories: Account[];
   members?: Record<string, any>;
   onAddTransaction: () => void;
+  onEditTransaction?: (tx: Transaction) => void;
   onAddSubscription: () => void;
   onAddPlannedExpense: () => void;
   onEditPlannedExpense?: (expense: PlannedExpense) => void;
@@ -41,6 +42,7 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
   categories = [],
   members,
   onAddTransaction,
+  onEditTransaction,
   onAddSubscription,
   onAddPlannedExpense,
   onEditPlannedExpense,
@@ -152,9 +154,11 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
   };
 
   const expenseTransactions = transactions.filter(tx => {
-    const debitAcc = categories.find(a => a.id === tx.debitAccountId);
+    const debitAcc = categories.find(a => a.id === tx.debitAccountId || a.id === tx.categoryId) || accounts.find(a => a.id === tx.debitAccountId);
     const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
-    return debitAcc?.type === 'expense' && creditAcc?.type === 'asset';
+    if (debitAcc?.type === 'expense') return true;
+    if (creditAcc && debitAcc?.type !== 'income') return true;
+    return false;
   });
 
   return (
@@ -399,7 +403,16 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                     <td className="px-6 py-4 text-sm font-bold text-rose-500 text-right">
                       -{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right space-x-1">
+                      {onEditTransaction && (
+                        <button 
+                          onClick={() => onEditTransaction(tx)}
+                          className="p-1.5 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                          title="Düzenle"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button 
                         onClick={() => {
                           setDeleteConfirmId(tx.id);
@@ -407,6 +420,7 @@ export const ExpenseView: React.FC<ExpenseViewProps> = ({
                           setDeleteConfirmMessage(`${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`);
                         }}
                         className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        title="Sil"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

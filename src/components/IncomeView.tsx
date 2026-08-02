@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   TrendingUp, Plus, Calendar, ArrowUpRight, 
-  Clock, Wallet, Briefcase, Target, Trash2, Check, X
+  Clock, Wallet, Briefcase, Target, Trash2, Pencil, Check, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { IncomeSource, ExpectedIncome, Account, Transaction } from '../types';
@@ -19,6 +19,8 @@ interface IncomeViewProps {
   accounts: Account[];
   onAddIncome: () => void;
   onEditIncome: (source: IncomeSource) => void;
+  onEditTransaction?: (tx: Transaction) => void;
+  onAddAccount?: () => void;
   onApproveIncome: (expected: ExpectedIncome, customAmount?: number) => void;
   onCancelIncome: (expected: ExpectedIncome) => void;
   isPrivacyMode?: boolean;
@@ -32,6 +34,8 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
   accounts,
   onAddIncome,
   onEditIncome,
+  onEditTransaction,
+  onAddAccount,
   onApproveIncome,
   onCancelIncome,
   isPrivacyMode = false
@@ -90,6 +94,8 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
     return debitAcc?.type === 'asset' && creditAcc?.type === 'income';
   });
 
+  const assetAccounts = accounts.filter(a => a.type === 'asset');
+
   return (
     <div className="space-y-6 pb-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -97,14 +103,45 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
           <h1 className="text-3xl font-black tracking-tighter text-foreground">Gelir Yönetimi</h1>
           <p className="text-muted-foreground text-sm font-medium mt-1">Gelir kaynaklarınız ve beklenen ödemeleriniz</p>
         </div>
-        <button 
-          onClick={onAddIncome}
-          className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-emerald-500/20"
-        >
-          <Plus className="w-5 h-5" />
-          Yeni Gelir Kaynağı
-        </button>
+        <div className="flex items-center gap-3">
+          {onAddAccount && (
+            <button 
+              onClick={onAddAccount}
+              className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-5 py-3 rounded-2xl font-bold transition-all border border-zinc-700 hover:border-zinc-600 text-sm"
+            >
+              <Plus className="w-4 h-4 text-emerald-500" />
+              Hesap Ekle
+            </button>
+          )}
+          <button 
+            onClick={onAddIncome}
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-emerald-500/20 text-sm"
+          >
+            <Plus className="w-5 h-5" />
+            Yeni Gelir Kaynağı
+          </button>
+        </div>
       </div>
+
+      {assetAccounts.length === 0 && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-amber-300">
+          <div className="flex items-center gap-3">
+            <Wallet className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">Banka / Varlık Hesabı Bulunamadı</p>
+              <p className="text-xs text-amber-400/80">Gelirlerinizin yatırılacağı bir banka veya nakit hesabı eklemeniz önerilir.</p>
+            </div>
+          </div>
+          {onAddAccount && (
+            <button
+              onClick={onAddAccount}
+              className="px-4 py-2 bg-amber-500 text-zinc-950 rounded-xl font-bold hover:bg-amber-400 transition-all text-xs flex items-center gap-1.5 shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Hemen Hesap Ekle
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Beklenen Gelirler */}
       <div className="space-y-4">
@@ -316,7 +353,16 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                   <td className="px-6 py-4 text-sm font-bold text-emerald-500 text-right">
                     +{formatWithEquivalent(tx.amount, tx.currency || 'TRY')}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4 text-right space-x-1">
+                    {onEditTransaction && (
+                      <button 
+                        onClick={() => onEditTransaction(tx)}
+                        className="p-1.5 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        title="Düzenle"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button 
                       onClick={() => setDeleteConfirm({
                         id: tx.id,
@@ -325,6 +371,7 @@ export const IncomeView: React.FC<IncomeViewProps> = ({
                         message: `${tx.description} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de etkileyecektir.`
                       })}
                       className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                      title="Sil"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

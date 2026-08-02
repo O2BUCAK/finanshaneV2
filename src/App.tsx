@@ -124,7 +124,7 @@ const CALCULATION_TYPE_OPTIONS = [
   { id: 'daily_rate', label: 'Günlük Bazlı', description: 'Çalışılan gün sayısına göre' },
 ];
 
-const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, initialData, isPrivacyMode }: any) => {
+const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, initialData, isPrivacyMode, onAddAccount }: any) => {
   const { user } = useAuth();
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [name, setName] = useState('');
@@ -166,6 +166,13 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
       }
     }
   }, [isOpen, initialData, accounts, user]);
+
+  useEffect(() => {
+    if (isOpen && !targetAccountId) {
+      const firstAsset = accounts.find((a: any) => a.type === 'asset');
+      if (firstAsset) setTargetAccountId(firstAsset.id);
+    }
+  }, [isOpen, targetAccountId, accounts]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -396,7 +403,32 @@ const IncomeSourceModal = ({ isOpen, onClose, householdId, accounts, members, in
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Hedef Hesap</label>
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Hedef Hesap</label>
+              {onAddAccount && (
+                <button
+                  type="button"
+                  onClick={onAddAccount}
+                  className="text-xs font-bold text-emerald-500 hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> + Yeni Hesap Ekle
+                </button>
+              )}
+            </div>
+            {accounts.filter((a: any) => a.type === 'asset').length === 0 && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-400">
+                <span>Varlık/banka hesabınız bulunmuyor.</span>
+                {onAddAccount && (
+                  <button
+                    type="button"
+                    onClick={onAddAccount}
+                    className="px-2.5 py-1 bg-amber-500 text-zinc-950 rounded-lg font-bold hover:bg-amber-400 transition-all text-xs flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Hesap Ekle
+                  </button>
+                )}
+              </div>
+            )}
             <div className="relative">
               <select
                 required
@@ -941,7 +973,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
     >
       <motion.div 
@@ -1460,7 +1492,7 @@ const AccountModal = ({ isOpen, onClose, householdId, members, initialData, isPr
   );
 };
 
-const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData, isPrivacyMode, defaultIsSubscription = false, defaultIsPlanned = false }: any) => {
+const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, members, initialData, isPrivacyMode, defaultIsSubscription = false, defaultIsPlanned = false, onAddAccount }: any) => {
   const { user } = useAuth();
   const { formatWithEquivalent } = useExchangeRates(isPrivacyMode);
   const [type, setType] = useState<'expense' | 'income' | 'transfer'>('expense');
@@ -1857,9 +1889,20 @@ const TransactionModal = ({ isOpen, onClose, householdId, accounts, categories, 
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                {type === 'expense' ? 'Ödeme Hesabı' : type === 'income' ? 'Hedef Hesap' : 'Kaynak Hesap'}
-              </label>
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  {type === 'expense' ? 'Ödeme Hesabı' : type === 'income' ? 'Hedef Hesap' : 'Kaynak Hesap'}
+                </label>
+                {onAddAccount && (
+                  <button
+                    type="button"
+                    onClick={onAddAccount}
+                    className="text-xs font-bold text-emerald-500 hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> + Hesap Ekle
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <select
                   required
@@ -2952,20 +2995,62 @@ const Dashboard = () => {
   const handleDeleteAllData = async () => {
     try {
       await logSecurityAction('delete_all_data', 'User initiated full data deletion');
-      await localDB.accounts.clear();
+      
+      // 1. Clear IndexedDB local storage
       await localDB.transactions.clear();
       await localDB.incomeSources.clear();
       await localDB.expectedIncomes.clear();
+      await localDB.expenseSources.clear();
+      await localDB.expectedExpenses.clear();
       await localDB.plannedExpenses.clear();
       await localDB.sharedBudgets.clear();
-      // Keep audit logs for a short while or clear them too? Let's clear them for full privacy.
       await localDB.auditLogs.clear();
+
+      // Reset all account balances to 0 in localDB
+      const localAccs = await localDB.accounts.toArray();
+      for (const acc of localAccs) {
+        await localDB.accounts.update(acc.id, { balance: 0, statementBalance: 0 });
+      }
+
+      // 2. Clear Firestore collections if household exists
+      if (household?.id) {
+        const collectionsToDelete = [
+          'transactions',
+          'incomeSources',
+          'expectedIncomes',
+          'expenseSources',
+          'expectedExpenses',
+          'plannedExpenses'
+        ];
+        
+        for (const colName of collectionsToDelete) {
+          try {
+            const colRef = collection(db, `households/${household.id}/${colName}`);
+            const snap = await getDocs(colRef);
+            for (const docSnap of snap.docs) {
+              await deleteDoc(docSnap.ref);
+            }
+          } catch (err) {
+            console.error(`Error deleting Firestore collection ${colName}:`, err);
+          }
+        }
+
+        // Reset Firestore account balances to 0
+        try {
+          const accSnap = await getDocs(collection(db, `households/${household.id}/accounts`));
+          for (const docSnap of accSnap.docs) {
+            await updateDoc(docSnap.ref, { balance: 0, statementBalance: 0 });
+          }
+        } catch (err) {
+          console.error("Error resetting Firestore account balances:", err);
+        }
+      }
       
-      setNotification({ type: 'success', message: 'Tüm verileriniz başarıyla silindi.' });
-      setTimeout(() => window.location.reload(), 2000);
+      showNotification('Tüm verileriniz ve işlemleriniz sıfırlandı. Sayfa yenileniyor...', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
       console.error("Failed to delete data:", e);
-      setNotification({ type: 'error', message: 'Veriler silinirken bir hata oluştu.' });
+      showNotification('Veriler silinirken bir hata oluştu.', 'error');
     }
   };
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -3220,12 +3305,13 @@ const Dashboard = () => {
   const monthlyExpense = transactions
     .filter(tx => {
       const txDate = new Date(tx.date);
-      const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
+      const debitAcc = categories.find(a => a.id === tx.debitAccountId || a.id === tx.categoryId) || allAccounts.find(a => (a.id === tx.debitAccountId || a.id === tx.categoryId) && a.type === 'expense');
       const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
+      const isExpenseCat = debitAcc?.type === 'expense';
+      const isPayingAcc = creditAcc && (creditAcc.type === 'asset' || creditAcc.type === 'liability');
       return txDate.getMonth() === currentMonth && 
              txDate.getFullYear() === currentYear &&
-             debitAcc?.type === 'expense' && 
-             creditAcc?.type === 'asset';
+             (isExpenseCat || (isPayingAcc && !categories.some(c => c.id === tx.debitAccountId && c.type === 'income')));
     })
     .reduce((sum, tx) => sum + tx.amount, 0);
 
@@ -3234,7 +3320,7 @@ const Dashboard = () => {
     .filter(c => c.type === 'expense')
     .map(cat => {
       const amount = transactions
-        .filter(tx => tx.categoryId === cat.id && new Date(tx.date).getMonth() === currentMonth)
+        .filter(tx => (tx.categoryId === cat.id || tx.debitAccountId === cat.id) && new Date(tx.date).getMonth() === currentMonth)
         .reduce((sum, tx) => sum + tx.amount, 0);
       return { name: cat.name, value: amount };
     })
@@ -3253,23 +3339,21 @@ const Dashboard = () => {
     const dateStr = new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
     const dayIncome = transactions
       .filter(tx => {
-        const txDate = tx.date;
+        const txDate = new Date(tx.date);
+        const creditAcc = categories.find(a => a.id === tx.creditAccountId || a.id === tx.categoryId) || allAccounts.find(a => (a.id === tx.creditAccountId || a.id === tx.categoryId) && a.type === 'income');
         const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
-        const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
         return txDate.toDateString() === date.toDateString() &&
-               debitAcc?.type === 'asset' && 
-               creditAcc?.type === 'income';
+               (creditAcc?.type === 'income' || (debitAcc?.type === 'asset' && !categories.some(c => c.id === tx.debitAccountId && c.type === 'expense')));
       })
       .reduce((sum, tx) => sum + tx.amount, 0);
 
     const dayExpense = transactions
       .filter(tx => {
-        const txDate = tx.date;
-        const debitAcc = accounts.find(a => a.id === tx.debitAccountId);
+        const txDate = new Date(tx.date);
+        const debitAcc = categories.find(a => a.id === tx.debitAccountId || a.id === tx.categoryId) || allAccounts.find(a => (a.id === tx.debitAccountId || a.id === tx.categoryId) && a.type === 'expense');
         const creditAcc = accounts.find(a => a.id === tx.creditAccountId);
         return txDate.toDateString() === date.toDateString() &&
-               debitAcc?.type === 'expense' && 
-               creditAcc?.type === 'asset';
+               (debitAcc?.type === 'expense' || (creditAcc && debitAcc?.type !== 'income'));
       })
       .reduce((sum, tx) => sum + tx.amount, 0);
 
@@ -3730,6 +3814,14 @@ const Dashboard = () => {
                 setEditingIncomeSource(source);
                 setIsIncomeModalOpen(true);
               }}
+              onEditTransaction={(tx) => {
+                setEditingTransaction(tx);
+                setIsTxModalOpen(true);
+              }}
+              onAddAccount={() => {
+                setEditingAccount(null);
+                setIsAccModalOpen(true);
+              }}
               onApproveIncome={handleApproveIncome}
               onCancelIncome={handleCancelIncome}
               isPrivacyMode={isPrivacyMode}
@@ -3748,6 +3840,10 @@ const Dashboard = () => {
               members={household?.members}
               onAddTransaction={() => {
                 setEditingTransaction(null);
+                setIsTxModalOpen(true);
+              }}
+              onEditTransaction={(tx) => {
+                setEditingTransaction(tx);
                 setIsTxModalOpen(true);
               }}
               onAddSubscription={() => {
@@ -4011,6 +4107,10 @@ const Dashboard = () => {
           isPrivacyMode={isPrivacyMode}
           defaultIsSubscription={txModalIsSubscription}
           defaultIsPlanned={isTxModalPlanned}
+          onAddAccount={() => {
+            setEditingAccount(null);
+            setIsAccModalOpen(true);
+          }}
         />
         <AccountModal
           isOpen={isAccModalOpen}
@@ -4028,6 +4128,10 @@ const Dashboard = () => {
           members={household?.members}
           initialData={editingIncomeSource}
           isPrivacyMode={isPrivacyMode}
+          onAddAccount={() => {
+            setEditingAccount(null);
+            setIsAccModalOpen(true);
+          }}
         />
 
         {/* Delete Transaction Confirmation Modal */}
