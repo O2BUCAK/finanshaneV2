@@ -4,7 +4,7 @@ import {
   Plus, Search, ChevronRight, AlertCircle, CheckCircle2,
   ExternalLink, Settings2, Eye, EyeOff, TrendingUp, TrendingDown,
   LayoutGrid, List as ListIcon, Trash2, Pencil, X, ArrowUpRight, ArrowDownLeft,
-  Filter, Tag, Calendar, CreditCard, Layers, ArrowDown, ArrowUp, ArrowUpDown
+  Filter, Tag, Calendar, CreditCard, Layers, ArrowDown, ArrowUp, ArrowUpDown, User
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Account, Transaction } from '../types';
@@ -24,6 +24,7 @@ interface AccountsViewProps {
   categories?: Account[];
   onEditTransaction?: (tx: Transaction) => void;
   isPrivacyMode?: boolean;
+  members?: Record<string, any>;
 }
 
 export const AccountsView: React.FC<AccountsViewProps> = ({
@@ -36,10 +37,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   transactions = [],
   categories = [],
   onEditTransaction,
-  isPrivacyMode = false
+  isPrivacyMode = false,
+  members = {}
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [groupBy, setGroupBy] = useState<'none' | 'institution' | 'type' | 'branch'>('none');
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [syncResults, setSyncResults] = useState<Record<string, { success: boolean; message: string }>>({});
@@ -54,6 +57,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [accTxSortField, setAccTxSortField] = useState<'date' | 'description' | 'category' | 'amount'>('date');
   const [accTxSortOrder, setAccTxSortOrder] = useState<'desc' | 'asc'>('desc');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const getOwnerDisplayName = (ownerId?: string) => {
+    if (!ownerId) return 'Hane Geneli';
+    if (members && members[ownerId]) {
+      return members[ownerId].displayName || members[ownerId].name || 'Hane Üyesi';
+    }
+    return 'Hane Üyesi';
+  };
 
   const toggleAccTxSort = (field: 'date' | 'description' | 'category' | 'amount') => {
     if (accTxSortField === field) {
@@ -104,10 +115,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     return accrued;
   };
 
-  const filteredAccounts = accounts.filter(acc => 
-    acc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    acc.institution?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredAccounts = accounts.filter(acc => {
+    const matchesSearch = 
+      acc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      acc.institution?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesOwner = ownerFilter === 'all' || acc.ownerId === ownerFilter;
+    return matchesSearch && matchesOwner;
+  });
 
   const groupedAccounts = useMemo<Record<string, Account[]>>(() => {
     if (groupBy === 'none') return { 'Tüm Hesaplar': filteredAccounts };
@@ -356,6 +370,25 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             </button>
           </div>
 
+          {members && Object.keys(members).length > 0 && (
+            <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
+              <User className="w-3.5 h-3.5 text-amber-400 ml-1" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sahip:</span>
+              <select 
+                value={ownerFilter}
+                onChange={(e) => setOwnerFilter(e.target.value)}
+                className="bg-transparent border-none text-xs font-bold uppercase tracking-wide focus:ring-0 cursor-pointer pr-8 text-foreground"
+              >
+                <option value="all">Tüm Üyeler</option>
+                {Object.entries(members).map(([id, m]) => (
+                  <option key={id} value={id}>
+                    {m.displayName || m.name || 'Üye'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 bg-secondary/50 p-1.5 rounded-2xl border border-border">
             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-2">Grupla:</span>
             <select 
@@ -414,7 +447,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     </div>
                     <div>
                       <h3 className="font-black text-xl text-foreground group-hover:text-primary transition-colors tracking-tighter leading-tight">{account.name}</h3>
-                      <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60 mt-1">{account.institution || 'Diğer Kurum'}</p>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">{account.institution || 'Diğer Kurum'}</p>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
+                          <User className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span>{getOwnerDisplayName(account.ownerId)}</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -602,76 +641,112 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   )}
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-3">
+
+              {/* Table Column Header for Desktop */}
+              <div className="hidden md:grid md:grid-cols-12 px-5 py-2.5 bg-secondary/30 rounded-xl border border-border/40 text-[10px] font-black uppercase tracking-widest text-muted-foreground gap-4 items-center">
+                <div className="col-span-4">Hesap & Kurum</div>
+                <div className="col-span-2">Hesap Sahibi</div>
+                <div className="col-span-3">Tür / Branş</div>
+                <div className="col-span-2 text-right">Bakiye / Değer</div>
+                <div className="col-span-1 text-right">İşlem</div>
+              </div>
+
+              <div className="space-y-2.5">
                 {accs.map(account => (
                   <div 
                     key={account.id}
                     onClick={() => setSelectedAccount(account)}
-                    className="corporate-card p-4 flex items-center justify-between hover:border-emerald-500/50 hover:shadow-md cursor-pointer transition-all group"
+                    className="corporate-card p-4 grid grid-cols-1 md:grid-cols-12 items-center gap-3 md:gap-4 hover:border-emerald-500/50 hover:shadow-md cursor-pointer transition-all group rounded-2xl"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-secondary/50 rounded-xl flex items-center justify-center border border-border/50 group-hover:scale-110 transition-transform">
+                    {/* Col 1: Icon, Name, Institution, Asset Symbol */}
+                    <div className="md:col-span-4 flex items-center gap-3">
+                      <div className="w-10 h-10 bg-secondary/50 rounded-xl flex items-center justify-center border border-border/50 group-hover:scale-110 transition-transform shrink-0">
                         {getBranchIcon(account.branch || '')}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-black text-sm text-foreground group-hover:text-emerald-400 transition-colors">{account.name}</h3>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-black text-sm text-foreground group-hover:text-emerald-400 transition-colors truncate">{account.name}</h3>
                           {account.assetDetails?.symbol && (
                             <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded uppercase">
                               {account.assetDetails.symbol}
                             </span>
                           )}
                         </div>
-                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest opacity-60">
-                          {account.institution || 'Diğer Kurum'} • {
-                            account.assetDetails?.assetType === 'stock' ? 'Hisse Senedi' :
-                            account.assetDetails?.assetType === 'crypto' ? 'Kripto' :
-                            account.subType === 'bes' ? 'BES Emeklilik' :
-                            account.subType === 'oks' ? 'OKS Emeklilik' :
-                            account.subType === 'liquidity_deposit' ? 'Likidite/Mevduat' :
-                            account.subType === 'credit_card' ? 'Kredi Kartı' :
-                            account.subType === 'cash' ? 'Nakit' :
-                            account.subType === 'personal_debt' ? 'Kişisel Borç' :
-                            account.subType === 'personal_loan' ? 'Kişisel Alacak' : 'Diğer'
-                          }
+                        <p className="text-[10px] text-muted-foreground font-extrabold uppercase tracking-widest opacity-70">
+                          {account.institution || 'Diğer Kurum'}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-8">
-                      <div className="text-right">
-                        <p className="text-[8px] text-muted-foreground uppercase tracking-widest font-black mb-0.5 opacity-60">Bakiye</p>
-                        <p className={`text-sm font-black ${account.subType === 'credit_card' ? 'text-rose-500' : 'text-foreground'}`}>
-                          {formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
-                        </p>
-                      </div>
-                      
-                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                    {/* Col 2: Owner Badge */}
+                    <div className="md:col-span-2 flex items-center">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
+                        <User className="w-3 h-3 text-amber-400 shrink-0" />
+                        <span className="truncate">{getOwnerDisplayName(account.ownerId)}</span>
+                      </span>
+                    </div>
+
+                    {/* Col 3: Type/Branch */}
+                    <div className="md:col-span-3 text-xs text-muted-foreground font-medium">
+                      <span className="px-2 py-0.5 bg-secondary/80 rounded-lg border border-border/50 text-[10px] font-extrabold text-foreground uppercase tracking-wider inline-block">
+                        {
+                          account.assetDetails?.assetType === 'stock' ? 'Hisse Senedi' :
+                          account.assetDetails?.assetType === 'crypto' ? 'Kripto Varlık' :
+                          account.subType === 'bes' ? 'BES Emeklilik' :
+                          account.subType === 'oks' ? 'OKS Emeklilik' :
+                          account.subType === 'liquidity_deposit' ? 'Vadesiz / Mevduat' :
+                          account.subType === 'credit_card' ? 'Kredi Kartı' :
+                          account.subType === 'cash' ? 'Nakit Para' :
+                          account.subType === 'personal_debt' ? 'Kişisel Borç' :
+                          account.subType === 'personal_loan' ? 'Kişisel Alacak' : 'Genel Hesap'
+                        }
+                      </span>
+                    </div>
+
+                    {/* Col 4: Balance */}
+                    <div className="md:col-span-2 md:text-right">
+                      <p className="text-[8px] text-muted-foreground uppercase tracking-widest font-black mb-0.5 opacity-60 md:hidden">Bakiye</p>
+                      <p className={`text-sm font-black ${account.subType === 'credit_card' ? 'text-rose-500' : 'text-foreground'}`}>
+                        {formatWithEquivalent(account.balance, account.currency || 'TRY', isAccountHidden(account.id))}
+                      </p>
+                    </div>
+
+                    {/* Col 5: Actions */}
+                    <div className="md:col-span-1 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                      {account.apiConfig && (
                         <button 
-                          onClick={() => toggleLocalPrivacy(account.id)}
-                          className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-                          title={isAccountHidden(account.id) ? 'Göster' : 'Gizle'}
+                          onClick={() => handleSync(account)}
+                          disabled={syncingIds.has(account.id)}
+                          className="p-1.5 text-muted-foreground hover:text-emerald-400 transition-colors"
+                          title="API Senkronize Et"
                         >
-                          {isAccountHidden(account.id) ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                          <RefreshCw className={`w-3.5 h-3.5 ${syncingIds.has(account.id) ? 'animate-spin text-emerald-400' : ''}`} />
                         </button>
+                      )}
+                      <button 
+                        onClick={() => toggleLocalPrivacy(account.id)}
+                        className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                        title={isAccountHidden(account.id) ? 'Göster' : 'Gizle'}
+                      >
+                        {isAccountHidden(account.id) ? <Eye className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
+                      <button 
+                        onClick={() => onEditAccount(account)}
+                        className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                        title="Düzenle"
+                      >
+                        <Settings2 className="w-3.5 h-3.5" />
+                      </button>
+                      {onDeleteAccount && (
                         <button 
-                          onClick={() => onEditAccount(account)}
-                          className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-                          title="Düzenle"
+                          onClick={() => setDeleteConfirmAccount(account)}
+                          className="p-1.5 text-rose-400 hover:text-rose-300 transition-colors"
+                          title="Hesabı Sil"
                         >
-                          <Settings2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                        {onDeleteAccount && (
-                          <button 
-                            onClick={() => setDeleteConfirmAccount(account)}
-                            className="p-2 text-rose-400 hover:text-rose-300 transition-colors"
-                            title="Hesabı Sil"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-emerald-400 self-center ml-2 transition-colors" />
-                      </div>
+                      )}
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-emerald-400 transition-colors ml-1" />
                     </div>
                   </div>
                 ))}
@@ -712,10 +787,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     {getBranchIcon(selectedAccount.branch || '')}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="text-2xl font-black text-foreground">{selectedAccount.name}</h2>
                       <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                         {selectedAccount.institution || 'Hesap'}
+                      </span>
+                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                        <User className="w-3 h-3 text-amber-400" />
+                        {getOwnerDisplayName(selectedAccount.ownerId)}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground font-medium mt-0.5">

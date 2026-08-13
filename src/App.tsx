@@ -4043,6 +4043,7 @@ const Dashboard = () => {
               assetPrices={assetPrices}
               transactions={transactions}
               categories={allAccounts}
+              members={household?.members}
               onAddAccount={() => {
                 setEditingAccount(null);
                 setIsAccModalOpen(true);
