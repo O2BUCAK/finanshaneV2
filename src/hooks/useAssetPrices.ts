@@ -7,6 +7,21 @@ interface AssetPrice {
   changePercent: number;
 }
 
+function safeParse(str: string) {
+  if (!str || typeof str !== 'string') return null;
+  try {
+    return JSON.parse(str);
+  } catch (_) {
+    try {
+      const lastCurly = str.lastIndexOf('}');
+      if (lastCurly > 0) {
+        return JSON.parse(str.slice(0, lastCurly + 1));
+      }
+    } catch (__) {}
+    return null;
+  }
+}
+
 export const useAssetPrices = (symbols: { symbol: string; type: 'stock' | 'crypto' | 'fund' }[]) => {
   const [prices, setPrices] = useState<Record<string, AssetPrice>>({});
   const [loading, setLoading] = useState(false);
@@ -36,8 +51,8 @@ export const useAssetPrices = (symbols: { symbol: string; type: 'stock' | 'crypt
               } else if (symbol === 'EXEN') {
                 const bitexenRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://www.bitexen.com/api/v1/ticker/EXEN/')}`);
                 const bitexenData = await bitexenRes.json();
-                const parsed = JSON.parse(bitexenData.contents);
-                if (parsed.status === 'success' && parsed.data?.ticker) {
+                const parsed = safeParse(bitexenData.contents);
+                if (parsed && parsed.status === 'success' && parsed.data?.ticker) {
                   const ticker = parsed.data.ticker;
                   newPrices[symbol] = {
                     symbol,
@@ -58,8 +73,8 @@ export const useAssetPrices = (symbols: { symbol: string; type: 'stock' | 'crypt
               
               if (res.ok) {
                 const data = await res.json();
-                const parsed = JSON.parse(data.contents);
-                if (parsed.chart?.result?.[0]) {
+                const parsed = safeParse(data.contents);
+                if (parsed?.chart?.result?.[0]) {
                   const result = parsed.chart.result[0];
                   const meta = result.meta;
                   newPrices[symbol] = {
@@ -76,7 +91,7 @@ export const useAssetPrices = (symbols: { symbol: string; type: 'stock' | 'crypt
               const fallbackRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`);
               if (fallbackRes.ok) {
                 const parsed = await fallbackRes.json();
-                if (parsed.chart?.result?.[0]) {
+                if (parsed?.chart?.result?.[0]) {
                   const result = parsed.chart.result[0];
                   const meta = result.meta;
                   newPrices[symbol] = {

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, RefreshCw, DollarSign, Euro, Coins, Search, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { GoogleGenAI } from "@google/genai";
 import { TurkishApisHub } from './TurkishApisHub';
 
 interface MarketData {
@@ -28,11 +27,10 @@ export const MarketDataWidget: React.FC = () => {
     try {
       const response = await fetch('/api/market-data');
       const json = await response.json();
-      console.log('Market data received:', json);
       setData(json);
       setLastUpdate(new Date().toLocaleTimeString('tr-TR'));
     } catch (error) {
-      console.error('Market data fetch error:', error);
+      console.warn('Market data fetch error:', error);
     } finally {
       setLoading(false);
     }
@@ -41,24 +39,14 @@ export const MarketDataWidget: React.FC = () => {
   const fetchSmartData = async () => {
     setSmartLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: "Get the current USD/TRY, EUR/TRY exchange rates, Gram Gold (24K) price in TRY, BIST 100 Index (XU100), Bitcoin (BTC) price in USD, and Ethereum (ETH) price in USD from Google Finance. Return ONLY a JSON object with keys 'USD', 'EUR', 'GA', 'XU100', 'BTC', 'ETH' and subkeys 'satis' (price as string) and 'degisim' (percentage change as string). Example: {\"USD\": {\"satis\": \"44.59\", \"degisim\": \"+0.1\"}, ...}",
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json"
-        }
-      });
-
-      const text = response.text;
-      if (text) {
-        const json = JSON.parse(text);
+      const response = await fetch('/api/smart-market-data');
+      const json = await response.json();
+      if (json) {
         setData({ ...json, _isSmart: true });
         setLastUpdate(new Date().toLocaleTimeString('tr-TR'));
       }
     } catch (error) {
-      console.error('Smart fetch error:', error);
+      console.warn('Smart fetch error:', error);
     } finally {
       setSmartLoading(false);
     }

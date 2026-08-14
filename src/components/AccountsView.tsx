@@ -4,7 +4,8 @@ import {
   Plus, Search, ChevronRight, AlertCircle, CheckCircle2,
   ExternalLink, Settings2, Eye, EyeOff, TrendingUp, TrendingDown,
   LayoutGrid, List as ListIcon, Trash2, Pencil, X, ArrowUpRight, ArrowDownLeft,
-  Filter, Tag, Calendar, CreditCard, Layers, ArrowDown, ArrowUp, ArrowUpDown, User
+  Filter, Tag, Calendar, CreditCard, Layers, ArrowDown, ArrowUp, ArrowUpDown, User,
+  UploadCloud
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Account, Transaction } from '../types';
@@ -12,6 +13,7 @@ import { useExchangeRates } from '../hooks/useExchangeRates';
 import { syncAccountWithApi } from '../lib/apiIntegrations';
 import { deleteLedgerTransaction, getCreditCardFutureDebt } from '../lib/ledger';
 import { ConfirmModal } from './ConfirmModal';
+import { StatementImportModal } from './StatementImportModal';
 
 interface AccountsViewProps {
   householdId: string;
@@ -52,6 +54,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [deleteConfirmAccount, setDeleteConfirmAccount] = useState<Account | null>(null);
   const [deleteConfirmTx, setDeleteConfirmTx] = useState<Transaction | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importTargetAccountId, setImportTargetAccountId] = useState<string>('');
   const [accTxFilter, setAccTxFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
   const [accTxSearch, setAccTxSearch] = useState('');
   const [accTxSortField, setAccTxSortField] = useState<'date' | 'description' | 'category' | 'amount'>('date');
@@ -402,6 +406,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               <option value="branch">Branş</option>
             </select>
           </div>
+
+          <button 
+            onClick={() => {
+              setImportTargetAccountId(accounts[0]?.id || '');
+              setIsImportModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-5 py-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-sm hover:bg-emerald-500/20 active:scale-[0.98] transition-all"
+            title="Garanti BBVA, Akbank, İş Bankası vb. bankalardan indirdiğiniz ekstre/CSV dosyasını yükleyin"
+          >
+            <UploadCloud className="w-4 h-4" />
+            Ekstre / Döküm Yükle
+          </button>
 
           <button 
             onClick={onAddAccount}
@@ -806,6 +822,17 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
+                      setImportTargetAccountId(selectedAccount.id);
+                      setIsImportModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-xl transition-colors"
+                    title="Bu hesaba ait ekstre/CSV dökümü yükle"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Ekstre Yükle</span>
+                  </button>
+                  <button
+                    onClick={() => {
                       onEditAccount(selectedAccount);
                       setSelectedAccount(null);
                     }}
@@ -1178,6 +1205,20 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         }}
         title="İşlemi Sil"
         message={`${deleteConfirmTx?.description || 'Bu'} işlemini silmek istediğinizden emin misiniz? Bu işlem hesap bakiyelerini de güncelleyecektir.`}
+      />
+
+      <StatementImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportTargetAccountId('');
+        }}
+        householdId={householdId}
+        accounts={accounts}
+        categories={categories}
+        members={members}
+        transactions={transactions}
+        initialAccountId={importTargetAccountId || selectedAccount?.id}
       />
     </div>
   );

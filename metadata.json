@@ -1,5 +1,6 @@
 {
   "name": "FinansHane | Aile ve Ev Bütçesi Takip Uygulaması",
-  "description": "FinansHane ile ev bütçenizi kolayca yönetin. Aile içi borç takibi, gelir-gider analizi, bütçe planlama ve çift kayıtlı muhasebe sistemiyle finansal kontrolünüzü elinize alın.",
-  "requestFramePermissions": []
+  "description": "FinansHane ile ev bütçenizi kolayca yönetin. Banka ekstre ve döküm içe aktarma (CSV/Excel), aile içi borç takibi, gelir-gider analizi ve çift kayıtlı muhasebe sistemi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

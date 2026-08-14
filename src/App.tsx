@@ -47,7 +47,8 @@ import {
   Save,
   RefreshCw,
   Share2,
-  Copy
+  Copy,
+  UploadCloud
 } from 'lucide-react';
 import { localDB } from './db';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -105,6 +106,7 @@ import { SubscriptionsView } from './components/SubscriptionsView';
 import { IncomeView } from './components/IncomeView';
 import { ExpenseView } from './components/ExpenseView';
 import { ConfirmModal } from './components/ConfirmModal';
+import { StatementImportModal } from './components/StatementImportModal';
 import { SaasLanding } from './components/SaasLanding';
 
 // --- Constants ---
@@ -3049,6 +3051,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [isStatementImportOpen, setIsStatementImportOpen] = useState(false);
   const [txModalIsSubscription, setTxModalIsSubscription] = useState(false);
   const [isTxModalPlanned, setIsTxModalPlanned] = useState(false);
   const [isAccModalOpen, setIsAccModalOpen] = useState(false);
@@ -3794,6 +3797,12 @@ const Dashboard = () => {
             onClick={() => handleTabChange('accounts')} 
           />
           <SidebarItem 
+            icon={UploadCloud} 
+            label="Ekstre Yükle" 
+            active={false} 
+            onClick={() => setIsStatementImportOpen(true)} 
+          />
+          <SidebarItem 
             icon={TrendingUp} 
             label="Gelir" 
             active={activeTab === 'income'} 
@@ -3867,6 +3876,15 @@ const Dashboard = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsStatementImportOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl transition-all text-xs font-bold shadow-sm"
+              title="Garanti BBVA ve diğer bankalardan indirdiğiniz dökümleri yükleyin"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Ekstre Yükle</span>
+            </button>
+
             <button 
               onClick={() => setIsPrivacyMode(!isPrivacyMode)}
               className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground"
@@ -4389,6 +4407,20 @@ const Dashboard = () => {
           title="Tüm Verileri Sil?"
           message="Tüm verileriniz kalıcı olarak silinecektir. Bu işlem geri alınamaz. Emin misiniz?"
         />
+
+        {household && (
+          <StatementImportModal
+            isOpen={isStatementImportOpen}
+            onClose={() => setIsStatementImportOpen(false)}
+            householdId={household.id}
+            accounts={accounts}
+            categories={categories}
+            members={household.members}
+            currentUserId={user?.uid}
+            transactions={transactions}
+            showNotification={showNotification}
+          />
+        )}
       </main>
     </div>
   );

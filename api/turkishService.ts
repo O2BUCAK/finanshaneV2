@@ -202,42 +202,56 @@ export async function getGoldRates(): Promise<GoldRate[]> {
   try {
     const res = await fetch('https://finans.truncgil.com/today.json', { signal: AbortSignal.timeout(5000) });
     if (res.ok) {
-      const data = await res.json();
-      const goldItems: GoldRate[] = [];
-
-      const keysMap: Record<string, string> = {
-        'gram-altin': 'Gram Altın (24 Ayar)',
-        'ceyrekayar-altin': 'Çeyrek Altın',
-        'yarim-altin': 'Yarım Altın',
-        'tam-altin': 'Tam Altın',
-        'ata-altin': 'Ata Altın',
-        'ons': 'Ons Altın ($)',
-        'gumus': 'Gram Gümüş',
-        '22-ayar-bilezik': '22 Ayar Bilezik'
-      };
-
-      for (const [key, label] of Object.entries(keysMap)) {
-        if (data[key]) {
-          const item = data[key];
-          const selling = parseFloat(String(item.Selling || item.Satis || item.satis || '0').replace('.', '').replace(',', '.'));
-          const buying = parseFloat(String(item.Buying || item.Alis || item.alis || '0').replace('.', '').replace(',', '.'));
-          const change = parseFloat(String(item.Change || item.Degisim || '0').replace('%', '').replace(',', '.'));
-
-          if (selling > 0) {
-            goldItems.push({
-              code: key,
-              name: label,
-              buying: buying || selling,
-              selling,
-              changePercent: change || 0,
-            });
-          }
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        const lastCurly = text.lastIndexOf('}');
+        if (lastCurly > 0) {
+          try {
+            data = JSON.parse(text.slice(0, lastCurly + 1));
+          } catch (__) {}
         }
       }
 
-      if (goldItems.length > 0) {
-        setCache('gold_rates', goldItems);
-        return goldItems;
+      if (data) {
+        const goldItems: GoldRate[] = [];
+
+        const keysMap: Record<string, string> = {
+          'gram-altin': 'Gram Altın (24 Ayar)',
+          'ceyrekayar-altin': 'Çeyrek Altın',
+          'yarim-altin': 'Yarım Altın',
+          'tam-altin': 'Tam Altın',
+          'ata-altin': 'Ata Altın',
+          'ons': 'Ons Altın ($)',
+          'gumus': 'Gram Gümüş',
+          '22-ayar-bilezik': '22 Ayar Bilezik'
+        };
+
+        for (const [key, label] of Object.entries(keysMap)) {
+          if (data[key]) {
+            const item = data[key];
+            const selling = parseFloat(String(item.Selling || item.Satis || item.satis || '0').replace('.', '').replace(',', '.'));
+            const buying = parseFloat(String(item.Buying || item.Alis || item.alis || '0').replace('.', '').replace(',', '.'));
+            const change = parseFloat(String(item.Change || item.Degisim || '0').replace('%', '').replace(',', '.'));
+
+            if (selling > 0) {
+              goldItems.push({
+                code: key,
+                name: label,
+                buying: buying || selling,
+                selling,
+                changePercent: change || 0,
+              });
+            }
+          }
+        }
+
+        if (goldItems.length > 0) {
+          setCache('gold_rates', goldItems);
+          return goldItems;
+        }
       }
     }
   } catch (err) {
