@@ -111,8 +111,8 @@ export const SaasLanding: React.FC<SaasLandingProps> = ({ onViewChange }) => {
       a: "Kesinlikle. Uygulamamız 6698 sayılı Kişisel Verilerin Korunması Kanunu (KVKK) ile tam uyumludur. Kullanıcılarımızın rızası dışında hiçbir işlem yapılmaz. İstediğiniz an verilerinizi tamamen sıfırlayabilir, dışa aktarabilir ya da hesabınızı kalıcı olarak silebilirsiniz."
     },
     {
-      q: "Ömür Boyu Ücretsiz (Free) plan neleri kapsıyor?",
-      a: "Tasarruf ve bütçe yönetimini herkes için erişilebilir kılmak amacıyla Free planımızı öncelikli ve son derece geniş kapsamlı tuttuk. Sınırsız işlem ekleme, temel hesap takipleri (Nakit, Kart), kategori bütçeleme ve hane halkı paylaşımı tamamen ücretsizdir. Hiçbir gizli ücret veya reklam barındırmaz."
+      q: "FinansHane gerçekten tamamen ücretsiz mi? Herhangi bir gizli ücret veya abonelik var mı?",
+      a: "Evet, FinansHane'deki tüm özellikler istisnasız tüm kullanıcılarımız için %100 ve ömür boyu ücretsizdir. Banka ekstre yükleme, çift kayıtlı muhasebe, ortak hane bütçesi, AiAdvisor yapay zeka analizleri ve Excel/PDF raporları için hiçbir abonelik ücreti, gizli masraf veya ücretli sürüm ayrımı yoktur."
     },
     {
       q: "Çift kayıtlı muhasebe sistemi nedir, bana ne fayda sağlar?",
@@ -161,7 +161,7 @@ export const SaasLanding: React.FC<SaasLandingProps> = ({ onViewChange }) => {
             <a href="#ozellikler" className="hover:text-white transition-colors">Özellikler</a>
             <a href="#güvenlik" className="hover:text-white transition-colors">Güvenlik ve KVKK</a>
             <a href="#hesaplayici" className="hover:text-white transition-colors">Bütçe Analizi</a>
-            <a href="#fiyatlandirma" className="hover:text-white transition-colors">Fiyatlandırma</a>
+            <a href="#ucretsiz" className="hover:text-white transition-colors">Tamamen Ücretsiz</a>
             <a href="#sss" className="hover:text-white transition-colors">Sıkça Sorulanlar</a>
           </nav>
 
@@ -581,119 +581,77 @@ export const SaasLanding: React.FC<SaasLandingProps> = ({ onViewChange }) => {
           </div>
         </section>
 
-        {/* 6. Pricing Section (Fiyatlandırma) - FREE PRIORITIZED */}
-        <section id="fiyatlandirma" className="py-24 border-t border-zinc-900">
+        {/* 6. Free & Transparent Guarantee Section */}
+        <section id="ucretsiz" className="py-24 border-t border-zinc-900 scroll-mt-20">
           <div className="max-w-7xl mx-auto px-6 space-y-16">
             <div className="text-center space-y-4 max-w-3xl mx-auto">
-              <h2 className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Fiyatlandırma Modelleri</h2>
-              <p className="text-3xl md:text-5xl font-black tracking-tight text-white">Herkes İçin Tasarruf, Her Bütçeye Uygun Plan</p>
-              <p className="text-zinc-400 text-sm md:text-base">FinansHane olarak finansal bilinci yaymak adına geniş özellikli bütçe yönetimini tamamen ücretsiz sunuyoruz. Destek olmak ve ekstra AI özelliklerine sahip olmak isteyenler için opsiyonel bir Premium planımız mevcuttur.</p>
+              <h2 className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Şeffaf & Açık Model</h2>
+              <p className="text-3xl md:text-5xl font-black tracking-tight text-white">Gizli Ücret Yok, %100 Tamamen Ücretsiz</p>
+              <p className="text-zinc-400 text-sm md:text-base">FinansHane'de hiçbir yapay kısıtlama, gizli tarife veya ücretli abonelik paketi yoktur. Tüm muhasebe, banka ekstre aktarımı ve yapay zeka analiz özellikleri herkes için ömür boyu sınırsız ve ücretsizdir.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-              {/* Free Plan (Primary/Prioritized according to user instructions) */}
-              <div className="bg-zinc-900/80 border-2 border-emerald-500/50 p-8 rounded-3xl space-y-6 relative flex flex-col justify-between">
-                <div className="absolute -top-4 left-6 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest shadow-lg shadow-emerald-500/20">
-                  Öncelikli & En Çok Tercih Edilen
+            <div className="max-w-3xl mx-auto">
+              {/* Single Comprehensive Free Plan Card */}
+              <div className="bg-zinc-900/90 border-2 border-emerald-500/50 p-8 sm:p-10 rounded-3xl space-y-8 relative shadow-2xl shadow-emerald-950/30">
+                <div className="absolute -top-4 left-8 bg-emerald-500 text-white px-4 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-widest shadow-lg shadow-emerald-500/25">
+                  Ömür Boyu Tamamen Ücretsiz
                 </div>
                 
-                <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
                   <div>
-                    <h3 className="text-2xl font-black text-white">Ömür Boyu Ücretsiz</h3>
-                    <p className="text-xs text-zinc-400 mt-1">Herkes için tam bütçe disiplini</p>
+                    <h3 className="text-2xl sm:text-3xl font-black text-white">Eksiksiz Ev & Aile Bütçesi</h3>
+                    <p className="text-xs sm:text-sm text-zinc-400 mt-1">Tüm kurumsal muhasebe ve analiz araçları dahil</p>
                   </div>
                   
-                  <div className="flex items-baseline gap-1 py-2">
-                    <span className="text-4xl font-black text-white">0 ₺</span>
-                    <span className="text-xs text-zinc-500 font-bold">/ ömür boyu</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-5xl font-black text-emerald-400">0 ₺</span>
+                    <span className="text-xs text-zinc-500 font-bold">/ sınırsız kullanım</span>
                   </div>
-
-                  <hr className="border-zinc-800" />
-
-                  <ul className="space-y-3 text-xs text-zinc-300">
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Sınırsız Gelir-Gider İşlem Kaydı
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> 1 Adet Hane Bütçesi
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Ortak Hane Halkı Üyeliği (Eş zamanlı)
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Nakit, Banka ve Kredi Kartı Hesapları
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Gider Kategori Bütçelemeleri
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Abonelik ve Düzenli Gider Takibi
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> %100 KVKK Güvenlik ve Audit Log Sistemi
-                    </li>
-                  </ul>
                 </div>
 
-                <div className="pt-6">
+                <hr className="border-zinc-800" />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3.5 gap-x-6 text-xs sm:text-sm text-zinc-200">
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Sınırsız Gelir-Gider & Çift Kayıtlı İşlem
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Banka Ekstre & Döküm İçe Aktarma (CSV/Excel)
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Ortak Hane Bütçesi & Eşzamanlı Aile Üyeliği
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Nakit, Banka, Kredi Kartı & Akbil Hesapları
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> AiAdvisor: Yapay Zeka Tasarruf Danışmanı
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Canlı Altın, Döviz ve Kripto Kur Takibi
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Gider Bütçeleme, Hedefler & Limit Uyarıları
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> PDF / Excel Rapor Dışa Aktarma
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Düzenli Abonelik & Fatura Takibi
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" /> %100 KVKK Uyumlu & Güvenli Bulut Altyapısı
+                  </div>
+                </div>
+
+                <div className="pt-4">
                   <button 
                     onClick={() => onViewChange('register')}
-                    className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl transition-all shadow-lg shadow-emerald-500/15 text-sm min-h-[44px]"
+                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl transition-all shadow-xl shadow-emerald-500/20 text-base min-h-[48px] flex items-center justify-center gap-2"
                   >
-                    Ücretsiz Kaydol
+                    Hemen Ücretsiz Başla <ArrowRight className="w-5 h-5" />
                   </button>
-                </div>
-              </div>
-
-              {/* Premium Supporter Plan */}
-              <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl space-y-6 flex flex-col justify-between opacity-90">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-2xl font-black text-zinc-200">Destekçi & Premium</h3>
-                      <p className="text-xs text-zinc-400 mt-1">İleri düzey bütçe yönetim araçları</p>
-                    </div>
-                    <div className="p-1.5 bg-zinc-800 text-zinc-400 rounded-lg">
-                      <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    </div>
-                  </div>
-
-                  <div className="flex items-baseline gap-1 py-2">
-                    <span className="text-4xl font-black text-white">49 ₺</span>
-                    <span className="text-xs text-zinc-500 font-bold">/ aylık (Nominal Destek)</span>
-                  </div>
-
-                  <hr className="border-zinc-800" />
-
-                  <ul className="space-y-3 text-xs text-zinc-300">
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> <strong>Tüm Free Plan Özellikleri</strong>
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Çoklu Hane / Ortak Bütçe Kurma
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> <strong>AiAdvisor:</strong> Gemini Destekli Finans Danışmanı
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Kripto & Değerli Maden Canlı Kur Entegrasyonu
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Gelişmiş PDF / Excel Dışa Aktarım Raporları
-                    </li>
-                    <li className="flex items-center gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" /> Öncelikli Sunucu ve Geliştirici Desteği
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="pt-6">
-                  <button 
-                    onClick={() => onViewChange('register')}
-                    className="w-full py-3.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-2xl transition-all text-sm border border-zinc-700 min-h-[44px]"
-                  >
-                    Premium Başlat
-                  </button>
+                  <p className="text-center text-[11px] text-zinc-500 mt-2.5">Kredi kartı gerekmez • Kurulum gerektirmez • Anında kullanıma hazır</p>
                 </div>
               </div>
             </div>
@@ -814,7 +772,7 @@ export const SaasLanding: React.FC<SaasLandingProps> = ({ onViewChange }) => {
           <div className="flex flex-wrap justify-center gap-6 text-xs text-zinc-400 font-medium">
             <a href="#ozellikler" className="hover:text-white transition-colors">Özellikler</a>
             <a href="#güvenlik" className="hover:text-white transition-colors">KVKK Güvenliği</a>
-            <a href="#fiyatlandirma" className="hover:text-white transition-colors">Fiyatlandırma</a>
+            <a href="#ucretsiz" className="hover:text-white transition-colors">Tamamen Ücretsiz</a>
             <a href="#sss" className="hover:text-white transition-colors">Destek & SSS</a>
           </div>
 
