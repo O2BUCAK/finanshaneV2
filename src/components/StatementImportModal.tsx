@@ -12,6 +12,7 @@ import {
   parseStatementFile 
 } from '../utils/statementParser';
 import { createLedgerTransaction } from '../lib/ledger';
+import { validateUploadedFile } from '../utils/security';
 
 interface StatementImportModalProps {
   isOpen: boolean;
@@ -87,6 +88,13 @@ export const StatementImportModal: React.FC<StatementImportModalProps> = ({
   const handleFileProcess = async (file: File) => {
     if (!selectedAccountId) {
       setParseError('Lütfen önce dökümün ait olduğu banka/varlık hesabını seçin.');
+      return;
+    }
+
+    // Security validation: File size, Extension, and MIME type check
+    const validation = validateUploadedFile(file);
+    if (!validation.valid) {
+      setParseError(validation.error || 'Geçersiz dosya.');
       return;
     }
 

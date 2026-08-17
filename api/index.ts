@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { GoogleGenAI } from "@google/genai";
 import { 
   getTcmbRates, 
@@ -9,90 +9,187 @@ import {
 } from './turkishService.ts';
 
 const app = express();
-app.use(express.json());
+
+// ==========================================
+// 1. SECURITY HEADERS & DEFENSE-IN-DEPTH
+// ==========================================
+app.use((req: Request, res: Response, next: NextFunction) => {
+  // Prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  // Protect against Clickjacking
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  
+  // Cross-site scripting filter
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Force HTTPS / HSTS (Strict-Transport-Security)
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  
+  // Referrer Policy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Restrict sensitive browser APIs
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  // Remove powered-by header to prevent fingerprinting
+  res.removeHeader('X-Powered-By');
+  
+  next();
+});
+
+// JSON Body Parser with strict payload size limit (1MB max to prevent Denial of Service)
+app.use(express.json({ limit: '1mb' }));
+
+// ==========================================
+// 2. RATE LIMITING & BOT PROTECTION
+// ==========================================
+interface RateLimitBucket {
+  count: number;
+  resetTime: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitBucket>();
+
+// Clean up stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitStore.entries()) {
+    if (now > value.resetTime) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+function rateLimiter(maxRequests: number, windowMs: number) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown-ip';
+    const clientIp = ip.split(',')[0].trim();
+    const endpointKey = `${clientIp}:${req.baseUrl || req.path}`;
+    const now = Date.now();
+
+    const record = rateLimitStore.get(endpointKey);
+
+    if (!record || now > record.resetTime) {
+      rateLimitStore.set(endpointKey, { count: 1, resetTime: now + windowMs });
+      return next();
+    }
+
+    if (record.count >= maxRequests) {
+      const retryAfterSec = Math.ceil((record.resetTime - now) / 1000);
+      res.setHeader('Retry-After', retryAfterSec.toString());
+      return res.status(429).json({ 
+        error: 'Çok fazla istek gönderildi. Lütfen bir süre sonra tekrar deneyin.',
+        retryAfterSeconds: retryAfterSec
+      });
+    }
+
+    record.count += 1;
+    next();
+  };
+}
+
+// Bot & Automated Scraper Protection Filter
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const userAgent = req.headers['user-agent'] || '';
+  // Block known malicious crawler patterns and empty user agents for API modifications
+  const isSuspicious = !userAgent || /(masscan|nikto|sqlmap|acunetix|zgrab|nmap)/i.test(userAgent);
+  if (isSuspicious && req.method === 'POST') {
+    return res.status(403).json({ error: 'Erişim engellendi.' });
+  }
+  next();
+});
 
 // Helper function to safely parse potentially truncated/malformed JSON
 function safeJsonParse(text: string): any {
   if (!text || typeof text !== 'string') return null;
   try {
     return JSON.parse(text);
-  } catch (e) {
-    // Try to find the valid JSON substring if trailing bytes are broken
+  } catch {
     try {
       const lastCurly = text.lastIndexOf('}');
       if (lastCurly > 0) {
         return JSON.parse(text.slice(0, lastCurly + 1));
       }
-    } catch (_) {}
+    } catch {}
     return null;
   }
 }
 
-// API Routes
-app.get('/api/health', (req, res) => {
+// ==========================================
+// 3. API ENDPOINTS (PARAMETERIZED & SANITIZED)
+// ==========================================
+
+// Health check
+app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// TCMB (Türkiye Cumhuriyet Merkez Bankası) Official XML Rates
-app.get('/api/tcmb-rates', async (req, res) => {
+// TCMB Rates with rate limiter
+app.get('/api/tcmb-rates', rateLimiter(60, 60 * 1000), async (req: Request, res: Response) => {
   try {
     const rates = await getTcmbRates();
     res.json({ success: true, source: 'TCMB (today.xml)', rates });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'TCMB kurları alınamadı' });
   }
 });
 
 // Yerel Kripto Borsaları (BtcTurk & Paribu)
-app.get('/api/crypto-tr', async (req, res) => {
+app.get('/api/crypto-tr', rateLimiter(60, 60 * 1000), async (req: Request, res: Response) => {
   try {
     const tickers = await getTurkishCryptoTickers();
     res.json({ success: true, source: 'BtcTurk & Paribu', tickers });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Kripto verileri alınamadı' });
   }
 });
 
 // Kapalıçarşı & Serbest Piyasa Altın / Gümüş
-app.get('/api/gold-rates', async (req, res) => {
+app.get('/api/gold-rates', rateLimiter(60, 60 * 1000), async (req: Request, res: Response) => {
   try {
     const gold = await getGoldRates();
     res.json({ success: true, source: 'Kapalıçarşı & Serbest Piyasa', rates: gold });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Altın kurları alınamadı' });
   }
 });
 
-// TEFAS & BES Yatırım Fonu Sorgulama
-app.get('/api/tefas-funds', async (req, res) => {
-  const code = (req.query.code as string) || 'AFT';
+// TEFAS & BES Yatırım Fonu (Strict Input Validation)
+app.get('/api/tefas-funds', rateLimiter(60, 60 * 1000), async (req: Request, res: Response) => {
+  const rawCode = (req.query.code as string) || 'AFT';
+  // Strict regex parameterization: Only 3 to 7 alphanumeric characters allowed
+  const code = rawCode.trim().toUpperCase();
+  if (!/^[A-Z0-9]{3,7}$/.test(code)) {
+    return res.status(400).json({ error: 'Geçersiz fon kodu formatı.' });
+  }
+
   try {
     const fund = await getTefasFund(code);
     if (!fund) {
       return res.status(404).json({ error: 'Fon bulunamadı' });
     }
     res.json({ success: true, source: 'TEFAS Platformu', fund });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'TEFAS verisi alınamadı' });
   }
 });
 
-// Makroekonomik Veriler & Türkiye Resmi Tatilleri
-app.get('/api/macro-tr', async (req, res) => {
+// Makroekonomik Veriler
+app.get('/api/macro-tr', rateLimiter(60, 60 * 1000), async (req: Request, res: Response) => {
   try {
     const macro = await getMacroAndHolidays();
     res.json({ success: true, data: macro });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Makro veriler alınamadı' });
   }
 });
 
-// Smart Market Data via Gemini with search tools (Server-side)
-app.get('/api/smart-market-data', async (req, res) => {
+// Smart Market Data via Gemini (Server-Side Proxy, No Client Keys Exposed)
+app.get('/api/smart-market-data', rateLimiter(30, 60 * 1000), async (req: Request, res: Response) => {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      // Return realistic defaults if no API key
       return res.json({
         'USD': { 'satis': '44.59', 'degisim': '0.15' },
         'EUR': { 'satis': '48.25', 'degisim': '0.08' },
@@ -136,35 +233,42 @@ app.get('/api/smart-market-data', async (req, res) => {
   }
 });
 
-// Gemini API chat endpoint
-app.post('/api/chat', async (req, res) => {
+// Gemini Chat Endpoint (Strict Rate Limit & Input Sanitization)
+app.post('/api/chat', rateLimiter(20, 60 * 1000), async (req: Request, res: Response) => {
   const { message } = req.body;
-  if (!message) {
-    return res.status(400).json({ error: 'Message is required' });
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Geçerli bir mesaj gereklidir.' });
+  }
+
+  // Length constraint to avoid token depletion attacks
+  const sanitizedMessage = message.trim().slice(0, 4000);
+  if (sanitizedMessage.length === 0) {
+    return res.status(400).json({ error: 'Mesaj boş olamaz.' });
   }
 
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
+      return res.status(500).json({ error: 'Yapay zeka servisi şu anda yapılandırılmamış.' });
     }
 
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: message,
+      contents: sanitizedMessage,
     });
-    const text = response.text;
+    const text = response.text || '';
 
     res.json({ reply: text });
   } catch (error) {
     console.warn('Gemini API error:', error);
-    res.status(500).json({ error: 'Failed to process chat request' });
+    // Trimmed safe error message without leaking stack traces or internal keys
+    res.status(500).json({ error: 'İstek işlenirken bir sorun oluştu. Lütfen tekrar deneyin.' });
   }
 });
 
 // Market Data Proxy with Fallback
-app.get('/api/market-data', async (req, res) => {
+app.get('/api/market-data', rateLimiter(60, 60 * 1000), async (req: Request, res: Response) => {
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'application/json',
@@ -186,7 +290,7 @@ app.get('/api/market-data', async (req, res) => {
   let eurFetched = false;
   let gaFetched = false;
 
-  // Source 1: Open ER API (Very reliable for currencies)
+  // Source 1: Open ER API
   try {
     const response = await fetch('https://open.er-api.com/v6/latest/TRY', { headers, signal: AbortSignal.timeout(timeout) });
     if (response.ok) {
@@ -198,11 +302,9 @@ app.get('/api/market-data', async (req, res) => {
         eurFetched = true;
       }
     }
-  } catch (e) {
-    // Graceful fallback
-  }
+  } catch {}
 
-  // Source 2: Truncgil (Turkish specific, good for Gold)
+  // Source 2: Truncgil
   try {
     const response = await fetch('https://finans.truncgil.com/today.json', { headers, signal: AbortSignal.timeout(timeout) });
     if (response.ok) {
@@ -226,7 +328,6 @@ app.get('/api/market-data', async (req, res) => {
           eurFetched = true;
         }
       } else {
-        // Extract gold price via regex if JSON was truncated
         const goldMatch = text.match(/["']gram-altin["']\s*:\s*\{[^}]*?["'](?:Selling|Satis|satis)["']\s*:\s*["']?([\d.,]+)/i);
         if (goldMatch) {
           marketData['GA'].satis = goldMatch[1];
@@ -234,9 +335,7 @@ app.get('/api/market-data', async (req, res) => {
         }
       }
     }
-  } catch (e) {
-    // Graceful fallback
-  }
+  } catch {}
 
   // Source 3: TCMB Rates
   if (!usdFetched || !eurFetched) {
@@ -250,9 +349,7 @@ app.get('/api/market-data', async (req, res) => {
         marketData['EUR'].satis = tcmbRates.EUR.forexSelling.toFixed(4);
         eurFetched = true;
       }
-    } catch (e) {
-      // Graceful fallback
-    }
+    } catch {}
   }
 
   // Final Fallback for Gold if still zero
@@ -272,6 +369,11 @@ app.get('/api/market-data', async (req, res) => {
   }
 
   res.json(marketData);
+});
+
+// Fallback 404 handler
+app.use('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({ error: 'Endpoint bulunamadı.' });
 });
 
 export default app;

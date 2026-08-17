@@ -2,45 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // ===============================================================
-    // Assumed Data Model
+    // Global Default Deny Catch-All (Zero-Trust Security Pillar)
     // ===============================================================
-    //
-    // Collection: users
-    // Document ID: {userId} (Firebase Auth UID)
-    // Fields:
-    //   - fullName: string (required)
-    //   - email: string (required, format: email)
-    //   - avatarUrl: string (optional)
-    //   - activeHouseholdId: string (optional)
-    //   - joinedBudgetIds: list (optional, strings)
-    //   - role: string (optional, enum: ['adult', 'child', 'elderly', 'other'])
-    //   - isAdmin: bool (optional)
-    //   - kvkkAccepted: bool (optional)
-    //   - kvkkAcceptedAt: timestamp (optional)
-    //   - createdAt: timestamp (required)
-    //
-    // Collection: households
-    // Document ID: {householdId}
-    // Fields:
-    //   - name: string (required)
-    //   - ownerId: string (required, UID)
-    //   - currency: string (required)
-    //   - joinCode: string (required)
-    //   - members: map (required, userId -> {role, type, salaryVisible, displayName, email})
-    //   - createdAt: timestamp (required)
-    //
-    // Collection: joinRequests
-    // Document ID: {requestId}
-    // Fields:
-    //   - userId: string (required)
-    //   - householdId: string (required)
-    //   - householdName: string (required)
-    //   - displayName: string (required)
-    //   - email: string (required)
-    //   - status: string (required, enum: ['pending', 'approved', 'rejected', 'cancelled'])
-    //   - createdAt: timestamp (required)
-    //
-    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ===============================================================
     // Helper Functions
@@ -52,6 +18,10 @@ service cloud.firestore {
 
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function isAdmin() {
@@ -72,10 +42,6 @@ service cloud.firestore {
       return request.resource.data.keys().hasAll(fields);
     }
 
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
-    }
-
     function isValidEmail(email) {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
@@ -92,25 +58,16 @@ service cloud.firestore {
              request.resource.data[field] <= request.time + duration.value(1, 'm');
     }
 
-    function isValidMember(member) {
-      return member is map &&
-             member.role in ['owner', 'member'] &&
-             member.type in ['adult', 'child', 'elderly', 'other'] &&
-             member.salaryVisible is bool &&
-             member.displayName is string &&
-             member.email is string;
-    }
-
     function isValidUserProfile(data) {
       return hasRequiredFields(['fullName', 'email', 'createdAt']) &&
-             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 100 &&
              isValidEmail(data.email) &&
              (data.isAdmin == false || isAdmin());
     }
 
     function isValidHousehold(data) {
       return hasRequiredFields(['name', 'ownerId', 'currency', 'members', 'joinCode', 'createdAt']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.ownerId is string &&
              data.members is map &&
              data.joinCode is string && data.joinCode.size() >= 3 && data.joinCode.size() <= 10 &&
@@ -130,10 +87,10 @@ service cloud.firestore {
     }
 
     // ===============================================================
-    // Rules
+    // Row-Level Security Rules
     // ===============================================================
 
-    // User Profiles
+    // User Profiles (Strict Row-Level Ownership)
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
@@ -144,7 +101,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Households
+    // Households & Subcollections (Access restricted strictly to members)
     match /households/{householdId} {
       allow read: if isMemberOfHousehold(householdId);
       
@@ -162,7 +119,7 @@ service cloud.firestore {
       
       allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
 
-      // Subcollections
+      // Subcollections: Accounts
       match /accounts/{accountId} {
         function isValidAccount(data) {
           return hasRequiredFields(['name', 'ownerId', 'type', 'branch', 'balance', 'currency', 'createdAt']) &&
@@ -184,6 +141,7 @@ service cloud.firestore {
         allow delete: if isMemberOfHousehold(householdId);
       }
 
+      // Subcollections: Transactions (Tampering Protection)
       match /transactions/{transactionId} {
         allow read: if isMemberOfHousehold(householdId);
         allow create, update: if isMemberOfHousehold(householdId) && 
@@ -197,7 +155,7 @@ service cloud.firestore {
       }
     }
 
-    // Join Requests
+    // Join Requests (Protected against unauthorized approvals)
     match /joinRequests/{requestId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isMemberOfHousehold(resource.data.householdId));
       allow list: if isAuthenticated();
@@ -217,7 +175,6 @@ service cloud.firestore {
 
     // Collection Group Rules for Shared Budgets
     match /{path=**}/sharedBudgets/{budgetId} {
-      // Allow reading a single document if it has a joinCode (public access)
       allow read: if (resource != null && resource.data.joinCode != null) && 
                      (isAuthenticated() || request.query.limit <= 1);
     }
