@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
+import readXlsxFile from 'read-excel-file/browser';
 import { Account, Transaction } from '../types';
 
 export interface ParsedStatementRow {
@@ -231,11 +231,19 @@ export async function parseStatementFile(
   let rawRows: any[][] = [];
 
   if (extension === 'xlsx' || extension === 'xls') {
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
+    try {
+      const sheets = await readXlsxFile(file);
+      const firstSheet = Array.isArray(sheets) && sheets.length > 0 ? sheets[0] : null;
+      const sheetRows: any[] = firstSheet && 'data' in firstSheet ? firstSheet.data : (Array.isArray(sheets) ? sheets : []);
+      rawRows = sheetRows.map((row: any) => (Array.isArray(row) ? row.map((cell: any) => (cell === null || cell === undefined ? '' : cell)) : []));
+    } catch {
+      // Fallback: If read-excel-file fails (e.g. CSV/HTML disguised with xls extension), try reading as text
+      const text = await readTextWithTurkishEncoding(file);
+      const parsed = Papa.parse<string[]>(text, {
+        skipEmptyLines: 'greedy',
+      });
+      rawRows = parsed.data || [];
+    }
   } else {
     // CSV / TXT / TSV
     const text = await readTextWithTurkishEncoding(file);
