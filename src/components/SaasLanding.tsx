@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Wallet, ShieldCheck, Users, ArrowRight, Check, HelpCircle, 
   ChevronDown, Search, Calculator, Shield, Sparkles, TrendingUp,
-  Percent, ArrowUpRight, DollarSign, Euro, Coins, Lock, Star
+  Percent, ArrowUpRight, DollarSign, Euro, Coins, Lock, Star, Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -774,11 +774,20 @@ export const SaasLanding: React.FC<SaasLandingProps> = ({ onViewChange }) => {
             <a href="#güvenlik" className="hover:text-white transition-colors">KVKK Güvenliği</a>
             <a href="#ucretsiz" className="hover:text-white transition-colors">Tamamen Ücretsiz</a>
             <a href="#sss" className="hover:text-white transition-colors">Destek & SSS</a>
+            <a 
+              href="mailto:ersin@ozbucak.com.tr?subject=FinansHane%20%C3%96neri%2C%20%C4%B0stek%20ve%20G%C3%B6r%C3%BC%C5%9Fler" 
+              className="text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1.5"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>Öneri & İletişim</span>
+            </a>
           </div>
 
           <div className="space-y-2 text-xs text-center md:text-right">
             <p className="text-zinc-400">&copy; 2026 FinansHane. Tüm Hakları Saklıdır.</p>
-            <p className="text-zinc-500 text-[10px]">6698 sayılı Kişisel Verilerin Korunması Kanunu standartlarına tam olarak uygundur.</p>
+            <p className="text-zinc-500 text-[11px]">
+              Öneri, istek ve görüşleriniz için: <a href="mailto:ersin@ozbucak.com.tr" className="text-emerald-400 hover:underline font-mono">ersin@ozbucak.com.tr</a>
+            </p>
           </div>
         </div>
       </footer>
