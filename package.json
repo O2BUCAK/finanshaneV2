@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -44,7 +45,11 @@
     "esbuild": "0.25.12",
     "protobufjs": "^7.6.5",
     "websocket-driver": ">=0.7.4",
-    "@grpc/grpc-js": ">=1.10.9",
+    "@grpc/grpc-js": ">=1.14.5",
+    "chokidar": ">=3.6.0",
+    "fast-glob": ">=3.3.2",
+    "braces": ">=3.0.3",
+    "micromatch": ">=4.0.8",
     "lodash": "^4.18.1",
     "path-to-regexp": "^0.1.13",
     "picomatch": ">=2.3.2 <3.0.0 || >=3.0.2 <4.0.0 || >=4.0.4",
@@ -67,6 +72,7 @@
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.2",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "vitest": "^5.0.3"
   }
 }

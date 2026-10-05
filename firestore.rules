@@ -62,7 +62,8 @@ service cloud.firestore {
       return hasRequiredFields(['fullName', 'email', 'createdAt']) &&
              data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 100 &&
              isValidEmail(data.email) &&
-             (data.isAdmin == false || isAdmin());
+             (data.isAdmin == false || isAdmin()) &&
+             (!('role' in data) || data.role == 'user' || isAdmin());
     }
 
     function isValidHousehold(data) {
@@ -97,6 +98,7 @@ service cloud.firestore {
       allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && isRecent('createdAt');
       allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && 
                       (request.resource.data.isAdmin == resource.data.isAdmin || isAdmin()) &&
+                      (!('role' in request.resource.data) || request.resource.data.role == resource.data.role || isAdmin()) &&
                       request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin();
     }
@@ -146,7 +148,10 @@ service cloud.firestore {
         allow read: if isMemberOfHousehold(householdId);
         allow create, update: if isMemberOfHousehold(householdId) && 
                                 hasRequiredFields(['description', 'amount', 'currency', 'date', 'debitAccountId', 'creditAccountId', 'categoryId', 'userId', 'createdAt', 'updatedAt']) &&
-                                validString('description', 1, 200);
+                                validString('description', 1, 200) &&
+                                request.resource.data.amount is number &&
+                                request.resource.data.amount > 0 &&
+                                request.resource.data.amount < 1000000000;
         allow delete: if isMemberOfHousehold(householdId);
       }
 

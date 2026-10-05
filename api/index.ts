@@ -9,6 +9,7 @@ import {
 } from './turkishService.ts';
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ==========================================
 // 1. SECURITY HEADERS & DEFENSE-IN-DEPTH
@@ -31,6 +32,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   
   // Restrict sensitive browser APIs
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  // Content-Security-Policy (CSP)
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://pagead2.googlesyndication.com https://*.google.com https://*.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://open.er-api.com https://finans.truncgil.com https://www.tefas.gov.tr https://api.btcturk.com https://www.paribu.com https://www.tcmb.gov.tr; frame-src 'self' https://*.firebaseapp.com https://*.google.com https://googleads.g.doubleclick.net; object-src 'none'; base-uri 'self';"
+  );
 
   // Remove powered-by header to prevent fingerprinting
   res.removeHeader('X-Powered-By');
@@ -63,8 +70,8 @@ setInterval(() => {
 
 function rateLimiter(maxRequests: number, windowMs: number) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown-ip';
-    const clientIp = ip.split(',')[0].trim();
+    const rawIp = req.ip || (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown-ip';
+    const clientIp = (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : 'unknown-ip') || 'unknown-ip';
     const endpointKey = `${clientIp}:${req.baseUrl || req.path}`;
     const now = Date.now();
 
@@ -100,9 +107,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Helper function to safely parse potentially truncated/malformed JSON
+// Helper function to safely parse potentially truncated/malformed JSON with prototype pollution defense
 function safeJsonParse(text: string): any {
   if (!text || typeof text !== 'string') return null;
+  // Prototype pollution filter
+  if (text.includes('__proto__') || text.includes('constructor') || text.includes('prototype')) {
+    text = text.replace(/"(__proto__|constructor|prototype)"\s*:/g, '"_sanitized_":');
+  }
   try {
     return JSON.parse(text);
   } catch {
